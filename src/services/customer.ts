@@ -1,0 +1,5 @@
+import { supabase, supabaseConfigurationError } from '../lib/supabase';
+export type CustomerOrder={id:string;order_number:string;status:string;total:number;created_at:string;special_instructions:string|null};const client=()=>{if(!supabase)throw new Error(supabaseConfigurationError);return supabase};
+export async function getMyOrders(){const {data,error}=await client().from('orders').select('id,order_number,status,total,created_at,special_instructions').order('created_at',{ascending:false});if(error){console.error(error);throw error}return(data??[]) as CustomerOrder[]}
+export async function getFavourites(userId:string){const {data,error}=await client().from('favourite_products').select('product_id').eq('user_id',userId);if(error){console.error(error);throw error}return(data??[]).map(row=>String(row.product_id))}
+export async function toggleFavourite(userId:string,productId:string,active:boolean){const query=active?client().from('favourite_products').insert({user_id:userId,product_id:productId}):client().from('favourite_products').delete().eq('user_id',userId).eq('product_id',productId);const {error}=await query;if(error){console.error(error);throw error}}

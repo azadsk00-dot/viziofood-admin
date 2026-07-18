@@ -1,0 +1,5 @@
+// Deploy with: supabase functions deploy create-checkout
+// Required secrets: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (webhook only), SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+import Stripe from 'https://esm.sh/stripe@15.12.0?target=deno';
+const stripe=new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!,{apiVersion:'2024-06-20'});
+Deno.serve(async(request)=>{try{const {cart,customer,successUrl,cancelUrl}=await request.json();const session=await stripe.checkout.sessions.create({mode:'payment',success_url:successUrl,cancel_url:cancelUrl,customer_email:customer.email,metadata:{cart:JSON.stringify(cart),customer:JSON.stringify(customer)},line_items:cart.items.map((item:{name:string;price:number;quantity:number;modifiers:{price:number}[]})=>({quantity:item.quantity,price_data:{currency:'aud',unit_amount:Math.round((item.price+item.modifiers.reduce((sum:number,m:{price:number})=>sum+m.price,0))*100),product_data:{name:item.name}}}))});return Response.json({url:session.url})}catch(error){return Response.json({error:error instanceof Error?error.message:'Checkout failed'},{status:400})}});

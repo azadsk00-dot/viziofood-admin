@@ -1,1 +1,0 @@
-var e=`/assets/hero-pasta-wZCdD3gO.png`;export{e as t};

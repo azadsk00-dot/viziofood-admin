@@ -33,7 +33,9 @@ export interface Product {
 }
 
 export type ProductDraft = Omit<Product, 'id' | 'createdBy' | 'updatedBy'>;
-export type OrderStatus = 'New'|'Accepted'|'Preparing'|'Ready'|'Completed'|'Cancelled';
-export interface Order { id:string; customer:string; email:string; total:number; status:OrderStatus; createdAt:string; items:number; notes?:string }
+export type OrderStatus = 'New' | 'Accepted' | 'Preparing' | 'Ready' | 'Completed' | 'Rejected';
+export type PaymentStatus = 'paid' | 'pending' | 'failed' | 'refunded' | 'unknown';
+export interface OrderItem { id:string; name:string; quantity:number; unitPrice:number; modifiers:string[]; notes:string }
+export interface Order { id:string; orderNumber:string; customer:string; email:string; phone:string; fulfilment:'Pickup'|'Delivery'; paymentStatus:PaymentStatus; total:number; status:OrderStatus; createdAt:string; items:OrderItem[]; itemsCount:number; notes:string }
 export interface Customer { id:string; name:string; email:string; orders:number; spend:number; lastOrder:string }
 export interface RestaurantSettings { name:string; address:string; phone:string; email:string; deliveryFee:number; taxRate:number; hours:string; instagram:string }

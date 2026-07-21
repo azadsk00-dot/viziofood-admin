@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
-import type { Customer, Order, OrderStatus, Product, ProductDraft, ProductVisibility, RestaurantSettings } from './types';
+import type { Customer, Order, OrderItem, OrderStatus, PaymentStatus, Product, ProductDraft, ProductVisibility, RestaurantSettings } from './types';
 
 type Row = Record<string, unknown>;
 const PRODUCT_BUCKET = 'product-images';
@@ -66,11 +66,37 @@ export async function uploadProductImage(file: File, onProgress?: (progress: num
 }
 export async function deleteProductImage(url: string) { const marker = `/storage/v1/object/public/${PRODUCT_BUCKET}/`; const path = url.includes(marker) ? decodeURIComponent(url.split(marker)[1] ?? '') : ''; if (!path) return; const { error } = await client().storage.from(PRODUCT_BUCKET).remove([path]); if (error) fail(error); }
 
-const order = (row:Row):Order => ({ id:text(row.order_number) || text(row.id), customer:text(row.customer_name), email:text(row.customer_email), total:number(row.total), status:(text(row.status)||'New') as OrderStatus, createdAt:text(row.created_at), items:number(row.items_count), notes:'' });
+const orderStatus = (value: unknown): OrderStatus => {
+  const status = text(value);
+  return status === 'Cancelled' ? 'Rejected' : status === 'Accepted' || status === 'Preparing' || status === 'Ready' || status === 'Completed' || status === 'Rejected' ? status : 'New';
+};
+const paymentStatus = (value: unknown): PaymentStatus => {
+  const status = text(value).toLowerCase();
+  return status === 'paid' || status === 'pending' || status === 'failed' || status === 'refunded' ? status : 'unknown';
+};
+const modifiers = (value: unknown): string[] => Array.isArray(value) ? value.map(item => typeof item === 'object' && item !== null && 'name' in item ? text(item.name) : text(item)).filter(Boolean) : [];
+const orderItem = (row: Row): OrderItem => ({ id:text(row.id), name:text(row.product_name), quantity:number(row.quantity), unitPrice:number(row.unit_price), modifiers:modifiers(row.modifiers), notes:text(row.special_instructions) });
+const order = (row:Row):Order => ({ id:text(row.id), orderNumber:text(row.order_number) || text(row.id), customer:text(row.customer_name), email:text(row.customer_email), phone:text(row.customer_phone), fulfilment:text(row.fulfilment_method).toLowerCase() === 'delivery' ? 'Delivery' : 'Pickup', paymentStatus:paymentStatus(row.payment_status), total:number(row.total), status:orderStatus(row.status), createdAt:text(row.created_at), items:[], itemsCount:number(row.items_count), notes:text(row.special_instructions) });
 const customer = (row:Row):Customer => ({ id:text(row.id), name:text(row.name), email:text(row.email), orders:number(row.orders_count), spend:number(row.total_spend), lastOrder:text(row.last_order_at) });
 const settings = (row:Row):RestaurantSettings => ({ name:text(row.name), address:text(row.address), phone:text(row.phone), email:text(row.email), hours:text(row.hours), deliveryFee:number(row.delivery_fee), taxRate:number(row.tax_rate), instagram:text(row.instagram) });
-export async function getOrders(limit?:number) { let query=client().from('orders').select('id,order_number,customer_name,customer_email,total,status,created_at,items_count').order('created_at',{ascending:false}); if(limit) query=query.limit(limit); const {data,error}=await query; if(error) fail(error); return(data??[]).map(row=>order(row as Row)); }
-export async function updateOrderStatus(id:string,status:OrderStatus){const {error}=await client().from('orders').update({status}).eq('id',id);if(error)fail(error)}
+export async function getOrders(limit?:number) {
+  let query=client().from('orders').select('id,order_number,customer_name,customer_email,customer_phone,fulfilment_method,special_instructions,payment_status,total,status,created_at,items_count').order('created_at',{ascending:false});
+  if(limit) query=query.limit(limit);
+  const {data:orderRows,error:orderError}=await query;
+  if(orderError) fail(orderError);
+  const rows=(orderRows??[]) as Row[]; const ids=rows.map(row=>text(row.id)).filter(Boolean);
+  if(!ids.length) return [];
+  const {data:itemRows,error:itemError}=await client().from('order_items').select('id,order_id,product_name,unit_price,quantity,modifiers,special_instructions').in('order_id',ids).order('created_at');
+  if(itemError) fail(itemError);
+  const itemsByOrder=new Map<string,OrderItem[]>();
+  for(const row of (itemRows??[]) as Row[]){const orderId=text(row.order_id);itemsByOrder.set(orderId,[...(itemsByOrder.get(orderId)??[]),orderItem(row)]);}
+  return rows.map(row=>{const value=order(row);return {...value,items:itemsByOrder.get(value.id)??[]};});
+}
+export async function updateOrderStatus(id:string,status:OrderStatus){
+  const {data,error}=await client().from('orders').update({status}).eq('id',id).select('id,status').single();
+  if(error){console.error('Unable to update order status',{orderId:id,status,error});throw new Error(`Unable to update order status: ${error.message}${error.code?` (${error.code})`:''}`);}
+  return {id:text((data as Row).id),status:orderStatus((data as Row).status)};
+}
 export async function getCategories(){const {data,error}=await client().from('categories').select('id,name').order('name');if(error)fail(error);return(data??[]).map(row=>({id:text(row.id),name:text(row.name),count:0}))}
 export async function getCustomers(){const {data,error}=await client().from('customers').select('id,name,email,orders_count,total_spend,last_order_at').order('last_order_at',{ascending:false});if(error)fail(error);return(data??[]).map(row=>customer(row as Row))}
 export async function getSettings(){const {data,error}=await client().from('restaurant_settings').select('id,name,address,phone,email,hours,delivery_fee,tax_rate,instagram').limit(1).maybeSingle();if(error)fail(error);return data?settings(data as Row):null}

@@ -12,5 +12,5 @@ export interface KitchenPrintJob {
 }
 
 export function createKitchenPrintJob(order: Order): KitchenPrintJob {
-  return { orderId:order.id, orderNumber:order.orderNumber, fulfilment:order.fulfilment, customer:order.customer, lines:order.items.map(item=>({quantity:item.quantity,name:item.name,modifiers:item.modifiers,notes:item.notes})), notes:order.notes, createdAt:order.createdAt };
+  return { orderId:order.orderId, orderNumber:order.orderNumber, fulfilment:order.fulfilment, customer:order.customer, lines:order.items.map(item=>({quantity:item.quantity,name:item.name,modifiers:item.modifiers,notes:item.notes})), notes:order.notes, createdAt:order.createdAt };
 }

@@ -76,7 +76,7 @@ const paymentStatus = (value: unknown): PaymentStatus => {
 };
 const modifiers = (value: unknown): string[] => Array.isArray(value) ? value.map(item => typeof item === 'object' && item !== null && 'name' in item ? text(item.name) : text(item)).filter(Boolean) : [];
 const orderItem = (row: Row): OrderItem => ({ id:text(row.id), name:text(row.product_name), quantity:number(row.quantity), unitPrice:number(row.unit_price), modifiers:modifiers(row.modifiers), notes:text(row.special_instructions) });
-const order = (row:Row):Order => ({ id:text(row.id), orderNumber:text(row.order_number) || text(row.id), customer:text(row.customer_name), email:text(row.customer_email), phone:text(row.customer_phone), fulfilment:text(row.fulfilment_method).toLowerCase() === 'delivery' ? 'Delivery' : 'Pickup', paymentStatus:paymentStatus(row.payment_status), total:number(row.total), status:orderStatus(row.status), createdAt:text(row.created_at), items:[], itemsCount:number(row.items_count), notes:text(row.special_instructions) });
+const order = (row:Row):Order => ({ orderId:text(row.id), orderNumber:text(row.order_number) || text(row.id), customer:text(row.customer_name), email:text(row.customer_email), phone:text(row.customer_phone), fulfilment:text(row.fulfilment_method).toLowerCase() === 'delivery' ? 'Delivery' : 'Pickup', paymentStatus:paymentStatus(row.payment_status), total:number(row.total), status:orderStatus(row.status), createdAt:text(row.created_at), items:[], itemsCount:number(row.items_count), notes:text(row.special_instructions) });
 const customer = (row:Row):Customer => ({ id:text(row.id), name:text(row.name), email:text(row.email), orders:number(row.orders_count), spend:number(row.total_spend), lastOrder:text(row.last_order_at) });
 const settings = (row:Row):RestaurantSettings => ({ name:text(row.name), address:text(row.address), phone:text(row.phone), email:text(row.email), hours:text(row.hours), deliveryFee:number(row.delivery_fee), taxRate:number(row.tax_rate), instagram:text(row.instagram) });
 export async function getOrders(limit?:number) {
@@ -90,12 +90,14 @@ export async function getOrders(limit?:number) {
   if(itemError) fail(itemError);
   const itemsByOrder=new Map<string,OrderItem[]>();
   for(const row of (itemRows??[]) as Row[]){const orderId=text(row.order_id);itemsByOrder.set(orderId,[...(itemsByOrder.get(orderId)??[]),orderItem(row)]);}
-  return rows.map(row=>{const value=order(row);return {...value,items:itemsByOrder.get(value.id)??[]};});
+  return rows.map(row=>{const value=order(row);return {...value,items:itemsByOrder.get(value.orderId)??[]};});
 }
-export async function updateOrderStatus(id:string,status:OrderStatus){
-  const {data,error}=await client().from('orders').update({status}).eq('id',id).select('id,status').single();
-  if(error){console.error('Unable to update order status',{orderId:id,status,error});throw new Error(`Unable to update order status: ${error.message}${error.code?` (${error.code})`:''}`);}
-  return {id:text((data as Row).id),status:orderStatus((data as Row).status)};
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export async function updateOrderStatus(orderId:string,status:OrderStatus){
+  if(!uuid.test(orderId)) throw new Error(`Order update blocked: expected a UUID, received "${orderId}".`);
+  const {data,error}=await client().from('orders').update({status}).eq('id',orderId).select('id,status').single();
+  if(error){console.error('Unable to update order status',{orderId,status,error});throw new Error(`Unable to update order status: ${error.message}${error.code?` (${error.code})`:''}`);}
+  return {orderId:text((data as Row).id),status:orderStatus((data as Row).status)};
 }
 export async function getCategories(){const {data,error}=await client().from('categories').select('id,name').order('name');if(error)fail(error);return(data??[]).map(row=>({id:text(row.id),name:text(row.name),count:0}))}
 export async function getCustomers(){const {data,error}=await client().from('customers').select('id,name,email,orders_count,total_spend,last_order_at').order('last_order_at',{ascending:false});if(error)fail(error);return(data??[]).map(row=>customer(row as Row))}

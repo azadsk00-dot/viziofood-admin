@@ -1,0 +1,21 @@
+# Vizio Food — SPA fallback for Hostinger (Apache)
+#
+# React Router uses BrowserRouter, so client-side routes like /admin, /admin/orders,
+# /kitchen, etc. must all be served index.html. Without these rules a refresh on any
+# deep link returns Hostinger's 404 because the path doesn't map to a real file.
+#
+# Rule of thumb: serve the file if it physically exists (HTML, JS, CSS, images,
+# /sounds/*.wav, favicon, etc.); otherwise hand the request to index.html so React
+# Router can take over.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Serve the real file or directory when it exists on disk.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else → single-page app entry point.
+  RewriteRule ^ index.html [L]
+</IfModule>

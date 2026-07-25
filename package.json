@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "start": "node server/index.js",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.6",
     "@vitejs/plugin-react": "latest",
+    "express": "^4.21.2",
     "framer-motion": "latest",
     "lucide-react": "^1.24.0",
     "react": "latest",

@@ -5,7 +5,7 @@ import { getOrders, getProducts, updateOrderStatus } from './supabase';
 import { useResource } from './useResource';
 import { useOrdersRealtime } from '../hooks/useOrdersRealtime';
 import { useToast } from '../components/Toast';
-import { playNewPaidOrderSound } from './orderNotifications';
+import { notifyNewOrder, requestNotificationPermission } from './orderNotifications';
 import type { Order, OrderStatus } from './types';
 
 const statuses: OrderStatus[] = ['New', 'Accepted', 'Preparing', 'Ready', 'Completed', 'Rejected'];
@@ -40,7 +40,7 @@ function exportOrders(orders:Order[]) { const rows=[['Order','Customer','Phone',
 export function EnhancedOrders(){
   const resource=useResource(getOrders); const toast=useToast(); const [query,setQuery]=useState(''); const [status,setStatus]=useState<'All'|OrderStatus>('All'); const [selected,setSelected]=useState<Order>(); const [page,setPage]=useState(1); const pageSize=12;
   const [,setClock]=useState(0); useEffect(()=>{const timer=window.setInterval(()=>setClock(value=>value+1),60000);return()=>window.clearInterval(timer)},[]);
-  const refresh=useCallback((event?:{eventType?:string;new?:Record<string,unknown>})=>{if(event?.eventType==='INSERT'&&String(event.new?.payment_status??'paid').toLowerCase()==='paid'){playNewPaidOrderSound();toast.show(`New paid order ${String(event.new?.order_number??'')} received`);} void resource.reload();},[resource.reload,toast]); useOrdersRealtime(refresh);
+  const refresh=useCallback((event?:{eventType?:string;new?:Record<string,unknown>})=>{console.log('[vizio-sound] realtime event',{eventType:event?.eventType,newId:event?.new?.id,paymentStatus:event?.new?.payment_status});if(event?.eventType==='INSERT'&&String(event.new?.payment_status??'paid').toLowerCase()==='paid'){const id=String(event.new?.id??'');if(id){console.log('[vizio-sound] INSERT paid → notifyNewOrder',id);notifyNewOrder(id,event.new??{},toast);}void requestNotificationPermission();} void resource.reload();},[resource.reload,toast]); useOrdersRealtime(refresh);
   const filtered=useMemo(()=>{const term=query.trim().toLowerCase();return(resource.data??[]).filter(order=>(!term||[order.orderNumber,order.customer,order.phone,order.email].some(value=>value.toLowerCase().includes(term)))&&(status==='All'||order.status===status));},[resource.data,query,status]);
   const pageCount=Math.max(1,Math.ceil(filtered.length/pageSize)); const visible=filtered.slice((page-1)*pageSize,page*pageSize); const totals=useMemo(()=>Object.fromEntries(counters.map(value=>[value,(resource.data??[]).filter(order=>order.status===value).length])) as Record<OrderStatus,number>,[resource.data]);
   const update=async(order:Order,next:OrderStatus)=>{try{await updateOrderStatus(order.orderId,next);toast.show(`${order.orderNumber} marked ${next}`);await resource.reload();setSelected(current=>current?.orderId===order.orderId?{...current,status:next}:current);}catch(error){toast.show(error instanceof Error?error.message:'Could not update order.','error')}};

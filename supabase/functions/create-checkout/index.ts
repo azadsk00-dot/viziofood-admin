@@ -23,7 +23,32 @@ const isUuid = (value: string) =>
     value,
   );
 
+// CORS: the live site plus the Vite dev server (local development calls
+// this deployed function via VITE_STRIPE_CHECKOUT_ENDPOINT). The caller's
+// origin is echoed only when allow-listed; otherwise the site origin is
+// returned, so access is never broadened to arbitrary origins.
+const ALLOWED_ORIGINS = new Set([
+  'https://viziofood.com',
+  'http://localhost:5173',
+]);
+const corsHeaders = (request: Request): Record<string, string> => {
+  const origin = request.headers.get('origin') ?? '';
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.has(origin)
+      ? origin
+      : 'https://viziofood.com',
+    'Access-Control-Allow-Headers':
+      'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+};
+
 Deno.serve(async (request: Request) => {
+  // Preflight is answered before any business logic runs.
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
+  }
+
   try {
     // ── Check if ordering is enabled (server-side enforcement) ──
     const { data: settings, error: settingsError } = await db
@@ -36,7 +61,7 @@ Deno.serve(async (request: Request) => {
       console.error('Settings fetch error:', settingsError);
       return Response.json(
         { error: 'Unable to verify order settings.' },
-        { status: 500 },
+        { status: 500, headers: corsHeaders(request) },
       );
     }
 
@@ -44,7 +69,10 @@ Deno.serve(async (request: Request) => {
       const message =
         settings?.order_pause_message?.trim() ||
         'Online ordering is currently paused.';
-      return Response.json({ error: message }, { status: 409 });
+      return Response.json(
+        { error: message },
+        { status: 409, headers: corsHeaders(request) },
+      );
     }
 
     // ── Validate the payload ──
@@ -55,7 +83,7 @@ Deno.serve(async (request: Request) => {
     ) {
       return Response.json(
         { error: 'A cart with items and customer details is required.' },
-        { status: 400 },
+        { status: 400, headers: corsHeaders(request) },
       );
     }
 
@@ -208,12 +236,15 @@ Deno.serve(async (request: Request) => {
       throw error;
     }
 
-    return Response.json({ url: sessionUrl });
+    return Response.json(
+      { url: sessionUrl },
+      { headers: corsHeaders(request) },
+    );
   } catch (error) {
     console.error('Checkout error:', error);
     return Response.json(
       { error: error instanceof Error ? error.message : 'Checkout failed' },
-      { status: 400 },
+      { status: 400, headers: corsHeaders(request) },
     );
   }
 });

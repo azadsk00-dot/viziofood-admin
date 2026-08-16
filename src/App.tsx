@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AdminRoute, StaffRoute } from "./components/ProtectedRoute";
+import { Footer, Navbar, OrdersPausedBanner } from "./components/Layout";
 
 import ProductManagement from "./admin/ProductManagement";
 import {
@@ -14,31 +15,51 @@ import {
   Categories,
   Customers,
   Reports,
-  SettingsPage,
 } from "./admin/pages";
+import { SettingsPage } from "./admin/Settings";
 
 import AdminLogin from "./pages/AdminLogin";
+import { CheckoutCancel, CheckoutSuccess } from "./pages/CheckoutResult";
 
+const Home = lazy(() => import("./pages/Home"));
+const Menu = lazy(() => import("./pages/Menu"));
+const About = lazy(() => import("./pages/About"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const Account = lazy(() => import("./pages/Account"));
 const Kitchen = lazy(() => import("./pages/Kitchen"));
 const AdminLayout = lazy(() => import("./admin/AdminLayout"));
+
+function Public() {
+  return (
+    <>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <Navbar />
+      <OrdersPausedBanner />
+      <main id="main-content">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/menu" element={<Menu />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout/success" element={<CheckoutSuccess />} />
+          <Route path="/checkout/cancel" element={<CheckoutCancel />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      <Footer />
+    </>
+  );
+}
 
 export default function App() {
   return (
     <ErrorBoundary>
       <Suspense fallback={<div className="admin-message">Loading...</div>}>
         <Routes>
-          <Route path="/" element={<Navigate to="/admin" replace />} />
+          <Route path="/kitchen" element={<StaffRoute><Kitchen /></StaffRoute>} />
 
           <Route path="/admin/login" element={<AdminLogin />} />
-
-          <Route
-            path="/kitchen"
-            element={
-              <StaffRoute>
-                <Kitchen />
-              </StaffRoute>
-            }
-          />
 
           <Route
             path="/admin"
@@ -57,7 +78,7 @@ export default function App() {
             <Route path="settings" element={<SettingsPage />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<Public />} />
         </Routes>
       </Suspense>
     </ErrorBoundary>

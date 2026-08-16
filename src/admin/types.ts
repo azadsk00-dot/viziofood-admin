@@ -33,9 +33,70 @@ export interface Product {
 }
 
 export type ProductDraft = Omit<Product, 'id' | 'createdBy' | 'updatedBy'>;
-export type OrderStatus = 'New' | 'Accepted' | 'Preparing' | 'Ready' | 'Completed' | 'Rejected';
-export type PaymentStatus = 'paid' | 'pending' | 'failed' | 'refunded' | 'unknown';
-export interface OrderItem { id:string; name:string; quantity:number; unitPrice:number; modifiers:string[]; notes:string }
-export interface Order { orderId:string; orderNumber:string; customer:string; email:string; phone:string; fulfilment:'Pickup'|'Delivery'; paymentStatus:PaymentStatus; total:number; status:OrderStatus; createdAt:string; items:OrderItem[]; itemsCount:number; notes:string }
-export interface Customer { id:string; name:string; email:string; orders:number; spend:number; lastOrder:string }
-export interface RestaurantSettings { name:string; address:string; phone:string; email:string; deliveryFee:number; taxRate:number; hours:string; instagram:string }
+export type OrderStatus = 'New' | 'Accepted' | 'Preparing' | 'Ready' | 'Completed' | 'Rejected' | 'Cancelled';
+export type PaymentStatus = 'paid' | 'pending' | 'failed' | 'refunded' | 'partially_refunded' | 'unknown';
+export type RefundStatus = '' | 'pending' | 'succeeded' | 'partially_refunded' | 'failed';
+
+export interface OrderItem { id: string; name: string; quantity: number; unitPrice: number; modifiers: string[]; notes: string }
+
+export interface Order {
+  orderId: string;
+  orderNumber: string;
+  customer: string;
+  email: string;
+  phone: string;
+  fulfilment: 'Pickup' | 'Delivery';
+  paymentStatus: PaymentStatus;
+  refundStatus: RefundStatus;
+  refundId: string;
+  refundAmount: number;
+  refundedAt: string | null;
+  refundReason: string;
+  paymentIntentId: string;
+  stripeSessionId: string;
+  cancelledAt: string | null;
+  cancellationReason: string;
+  specialInstructions: string;
+  taxTotal: number;
+  total: number;
+  status: OrderStatus;
+  createdAt: string;
+  items: OrderItem[];
+  itemsCount: number;
+  notes: string;
+}
+
+export interface Customer { id: string; name: string; email: string; orders: number; spend: number; lastOrder: string }
+
+export interface DayHours { open: string; close: string; closed: boolean }
+export interface OpeningHours { [key: string]: DayHours }
+
+export interface RestaurantSettings {
+  id: string;
+  name: string;
+  address: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+  phone: string;
+  email: string;
+  hours: string;
+  openingHours: OpeningHours;
+  deliveryFee: number;
+  taxRate: number;
+  instagram: string;
+  facebook: string;
+  googleMaps: string;
+  ordersEnabled: boolean;
+  orderPauseMessage: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  userId: string;
+  action: string;
+  details: Record<string, unknown>;
+  orderId: string | null;
+  reason: string;
+  createdAt: string;
+}

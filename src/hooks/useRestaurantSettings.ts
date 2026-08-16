@@ -14,6 +14,7 @@ export interface PublicRestaurantSettings {
   instagramUrl: string;
   facebookUrl: string;
   openingHours: OpeningHours;
+  deliveryFee: number;
   ordersEnabled: boolean;
   orderPauseMessage: string;
 }
@@ -41,7 +42,7 @@ export function formatOpeningHours(hours: OpeningHours): string[] {
     });
 }
 
-const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,orders_enabled,order_pause_message';
+const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,delivery_fee,orders_enabled,order_pause_message';
 
 /** Keeps document metadata + Restaurant JSON-LD in sync with DB settings. */
 function applyMetadata(s: PublicRestaurantSettings) {
@@ -89,6 +90,7 @@ const mapRow = (row: Record<string, unknown>): PublicRestaurantSettings => ({
   instagramUrl: typeof row.instagram === 'string' ? row.instagram : '',
   facebookUrl: typeof row.facebook === 'string' ? row.facebook : '',
   openingHours: parseHours(row.opening_hours),
+  deliveryFee: Number(row.delivery_fee ?? 0),
   ordersEnabled: row.orders_enabled !== false,
   orderPauseMessage: typeof row.order_pause_message === 'string' ? row.order_pause_message : '',
 });

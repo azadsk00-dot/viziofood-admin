@@ -27,86 +27,136 @@ Deno.serve(async (request: Request) => {
       Deno.env.get('STRIPE_WEBHOOK_SECRET')!,
     );
 
-    // ── Checkout completion (existing logic, unchanged) ──
+    // ── Checkout completion ──
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const cart = JSON.parse(
-        session.metadata?.cart ?? '{"items":[],"fulfilment":"pickup"}',
-      );
-      const customer = JSON.parse(session.metadata?.customer ?? '{}');
+      const paymentIntentId = session.payment_intent
+        ? String(session.payment_intent)
+        : '';
+      const paymentFields = {
+        payment_status: 'paid',
+        stripe_session_id: session.id,
+        payment_intent_id: paymentIntentId,
+        stripe_payment_intent: paymentIntentId,
+      };
 
-      const subtotal = cart.items.reduce(
-        (
-          sum: number,
-          item: {
-            price: number;
-            quantity: number;
-            modifiers: { price: number }[];
-          },
-        ) =>
-          sum +
-          (item.price +
-            item.modifiers.reduce(
-              (s: number, m: { price: number }) => s + m.price,
-              0,
-            )) *
-            item.quantity,
-        0,
-      );
+      // Preferred path: create-checkout stages the order before the session
+      // and passes only order_id in metadata (Stripe caps metadata values at
+      // 500 characters — cart JSON must not go there). The order and items
+      // already exist; completion just marks it paid. Idempotent: replays
+      // re-apply the same update and never duplicate rows.
+      const orderId = session.metadata?.order_id ?? '';
+      let handled = false;
+      if (isUuid(orderId)) {
+        const { data: order, error: orderError } = await db
+          .from('orders')
+          .select('id')
+          .eq('id', orderId)
+          .maybeSingle();
+        if (orderError) throw orderError;
+        if (order) {
+          const { error: updateError } = await db
+            .from('orders')
+            .update(paymentFields)
+            .eq('id', orderId);
+          if (updateError) throw updateError;
+          handled = true;
+        }
+        // order_id present but the row is gone → fall through to the legacy
+        // path so a paid session is never dropped.
+      }
 
-      const { data: created, error } = await db
-        .from('orders')
-        .insert({
-          customer_name: customer.name,
-          customer_email: customer.email,
-          customer_phone: customer.phone ?? '',
-          total:
-            subtotal * 1.1 + (cart.fulfilment === 'Delivery' ? 5 : 0),
-          items_count: cart.items.reduce(
-            (sum: number, item: { quantity: number }) => sum + item.quantity,
+      // Legacy path: sessions created before the order-first flow carry the
+      // full cart/customer JSON in metadata (checkouts in flight at deploy
+      // time). The original insert logic is preserved; an existing order for
+      // the same session is updated instead of duplicated, so Stripe event
+      // replays remain idempotent here too.
+      if (!handled) {
+        const { data: existing } = await db
+          .from('orders')
+          .select('id')
+          .eq('stripe_session_id', session.id)
+          .maybeSingle();
+
+        if (existing) {
+          const { error: updateError } = await db
+            .from('orders')
+            .update(paymentFields)
+            .eq('id', existing.id);
+          if (updateError) throw updateError;
+        } else {
+          const cart = JSON.parse(
+            session.metadata?.cart ?? '{"items":[],"fulfilment":"pickup"}',
+          );
+          const customer = JSON.parse(session.metadata?.customer ?? '{}');
+
+          const subtotal = cart.items.reduce(
+            (
+              sum: number,
+              item: {
+                price: number;
+                quantity: number;
+                modifiers: { price: number }[];
+              },
+            ) =>
+              sum +
+              (item.price +
+                item.modifiers.reduce(
+                  (s: number, m: { price: number }) => s + m.price,
+                  0,
+                )) *
+                item.quantity,
             0,
-          ),
-          status: 'New',
-          payment_status: 'paid',
-          stripe_session_id: session.id,
-          payment_intent_id: session.payment_intent
-            ? String(session.payment_intent)
-            : '',
-          stripe_payment_intent: session.payment_intent
-            ? String(session.payment_intent)
-            : '',
-        })
-        .select('id')
-        .single();
+          );
 
-      if (error) throw error;
+          const { data: created, error } = await db
+            .from('orders')
+            .insert({
+              customer_name: customer.name,
+              customer_email: customer.email,
+              customer_phone: customer.phone ?? '',
+              total:
+                subtotal * 1.1 + (cart.fulfilment === 'Delivery' ? 5 : 0),
+              items_count: cart.items.reduce(
+                (sum: number, item: { quantity: number }) => sum + item.quantity,
+                0,
+              ),
+              status: 'New',
+              ...paymentFields,
+            })
+            .select('id')
+            .single();
 
-      const itemRows = cart.items.map(
-        (item: {
-          productId: string;
-          name: string;
-          price: number;
-          quantity: number;
-          modifiers: unknown[];
-          instructions: string;
-        }) => ({
-          order_id: created.id,
-          product_id: isUuid(item.productId) ? item.productId : null,
-          product_name: item.name,
-          unit_price: item.price,
-          quantity: item.quantity,
-          modifiers: item.modifiers,
-          special_instructions: item.instructions,
-        }),
-      );
-      const { error: itemError } = await db
-        .from('order_items')
-        .insert(itemRows);
-      if (itemError) throw itemError;
+          if (error) throw error;
 
-      await db
-        .from('order_status_history')
-        .insert({ order_id: created.id, status: 'New' });
+          const itemRows = cart.items.map(
+            (item: {
+              productId: string;
+              name: string;
+              price: number;
+              quantity: number;
+              modifiers: unknown[];
+              instructions: string;
+            }) => ({
+              order_id: created.id,
+              product_id: isUuid(item.productId) ? item.productId : null,
+              product_name: item.name,
+              unit_price: item.price,
+              quantity: item.quantity,
+              modifiers: item.modifiers,
+              special_instructions: item.instructions,
+            }),
+          );
+          const { error: itemError } = await db
+            .from('order_items')
+            .insert(itemRows);
+          if (itemError) throw itemError;
+
+          await db
+            .from('order_status_history')
+            .insert({ order_id: created.id, status: 'New' });
+        }
+      }
     }
 
     // ── Refund events ──

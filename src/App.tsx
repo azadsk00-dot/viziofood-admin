@@ -72,10 +72,17 @@ export default function App() {
             <Route index element={<EnhancedDashboard />} />
             <Route path="orders" element={<EnhancedOrders />} />
             <Route path="products" element={<ProductManagement />} />
+            {/* /admin/menu is the historical/bookmarked URL for the menu
+                manager — keep it working as an alias for the products page. */}
+            <Route path="menu" element={<ProductManagement />} />
             <Route path="categories" element={<Categories />} />
             <Route path="customers" element={<Customers />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<SettingsPage />} />
+            {/* Unknown /admin/* paths must stay inside the admin panel —
+                without this they fall through to the public site's splat
+                route (e.g. /admin/menu used to render the public menu). */}
+            <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>
 
           <Route path="*" element={<Public />} />

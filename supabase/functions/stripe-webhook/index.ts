@@ -21,7 +21,9 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
-    const event = stripe.webhooks.constructEvent(
+    // Deno's WebCrypto (SubtleCryptoProvider) is async-only — constructEvent
+    // would throw "cannot be used in a synchronous context".
+    const event = await stripe.webhooks.constructEventAsync(
       await request.text(),
       signature,
       Deno.env.get('STRIPE_WEBHOOK_SECRET')!,

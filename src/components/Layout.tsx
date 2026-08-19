@@ -5,6 +5,13 @@ import { useRestaurantSettings, formatOpeningHours } from '../hooks/useRestauran
 
 const links: ReadonlyArray<readonly [string, string]> = [['/', 'Home'], ['/menu', 'Menu'], ['/about', 'Our Story'], ['/account', 'My account'], ['/checkout', 'Checkout']];
 
+/** Header/footer brand: the admin-uploaded logo when saved, otherwise the text wordmark. */
+function Brand({ logoUrl, footer = false }: { logoUrl?: string | null; footer?: boolean }) {
+  return <Link className="brand" to="/" aria-label="Vizio Food home">
+    {logoUrl ? <img className={`brand-logo${footer ? ' footer' : ''}`} src={logoUrl} alt="Vizio Food" /> : <>VIZIO <i>FOOD</i></>}
+  </Link>;
+}
+
 /** Shown site-wide when an admin pauses online ordering. */
 export function OrdersPausedBanner() {
   const { settings, loading } = useRestaurantSettings();
@@ -12,7 +19,7 @@ export function OrdersPausedBanner() {
   return <div className="orders-paused-banner" role="alert"><AlertCircle size={16} aria-hidden="true" /><span>{settings.orderPauseMessage || 'Online ordering is currently paused.'}</span></div>;
 }
 
-export function Navbar() { const [open, setOpen] = useState(false); return <header className="nav"><Link className="brand" to="/">VIZIO <i>FOOD</i></Link><nav aria-label="Primary navigation" className={open ? 'open' : ''}>{links.map(([path, label]) => <NavLink onClick={() => setOpen(false)} key={path} to={path}>{label}</NavLink>)}<Link onClick={() => setOpen(false)} className="button small" to="/checkout">Order now <ArrowUpRight size={16} aria-hidden="true" /></Link></nav><button className="menu" type="button" aria-label={open ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</button></header>; }
+export function Navbar() { const [open, setOpen] = useState(false); const { settings } = useRestaurantSettings(); return <header className="nav"><Brand logoUrl={settings?.logoUrl} /><nav aria-label="Primary navigation" className={open ? 'open' : ''}>{links.map(([path, label]) => <NavLink onClick={() => setOpen(false)} key={path} to={path}>{label}</NavLink>)}<Link onClick={() => setOpen(false)} className="button small" to="/checkout">Order now <ArrowUpRight size={16} aria-hidden="true" /></Link></nav><button className="menu" type="button" aria-label={open ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</button></header>; }
 
 export function Footer() {
   const { settings } = useRestaurantSettings();
@@ -20,7 +27,7 @@ export function Footer() {
   const addressLine = settings ? [settings.address, settings.suburb, settings.state, settings.postcode].filter(Boolean).join(', ') : '18 Oxford Street, Leederville';
   const hours = settings ? formatOpeningHours(settings.openingHours) : ['Mon–Sun · 7am–9pm'];
   return <footer>
-    <div><Link className="brand" to="/">VIZIO <i>FOOD</i></Link><p>Fresh Italian pasta.<br />Premium coffee.</p></div>
+    <div><Brand logoUrl={settings?.logoUrl} footer /><p>Fresh Italian pasta.<br />Premium coffee.</p></div>
     <div>
       <strong>Visit us</strong>
       {settings?.googleMapsUrl

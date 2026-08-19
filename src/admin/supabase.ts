@@ -3,6 +3,8 @@ import type {
   AuditLogEntry,
   Customer,
   DayHours,
+  HomepageContent,
+  HomepagePromoType,
   OpeningHours,
   Order,
   OrderItem,
@@ -29,12 +31,15 @@ const visibility = (value: unknown): ProductVisibility => value === 'hidden' || 
 const bool = (value: unknown) => value === true;
 
 export const productColumns = 'id,name,description,price,category,active,available,featured,popular,archived,archived_at,vegetarian,vegan,halal,gluten_free,preparation_time,calories,ingredients,allergens,tags,display_order,sku,internal_notes,image_url,thumbnail_url,gallery,gallery_images,visibility,created_by,updated_by';
+// featured_order arrives via getProducts only; before the 20260820 migration
+// runs the column may not exist, so reads fall back to the base column list.
+const productColumnsWithFeatured = productColumns.replace('display_order,', 'display_order,featured_order,');
 
 const product = (row: Row): Product => ({
   id: text(row.id), name: text(row.name), description: text(row.description), price: number(row.price), category: text(row.category), sku: text(row.sku),
   active: Boolean(row.active), available: Boolean(row.available), featured: Boolean(row.featured), popular: Boolean(row.popular), archived: Boolean(row.archived ?? row.archived_at), archivedAt: nullableText(row.archived_at),
   vegetarian: Boolean(row.vegetarian), vegan: Boolean(row.vegan), halal: Boolean(row.halal), glutenFree: Boolean(row.gluten_free), preparationTime: number(row.preparation_time), calories: nullableNumber(row.calories),
-  ingredients: strings(row.ingredients), allergens: strings(row.allergens), tags: strings(row.tags), displayOrder: number(row.display_order), imageUrl: nullableText(row.image_url), thumbnailUrl: nullableText(row.thumbnail_url),
+  ingredients: strings(row.ingredients), allergens: strings(row.allergens), tags: strings(row.tags), displayOrder: number(row.display_order), featuredOrder: row.featured_order === undefined ? undefined : number(row.featured_order), imageUrl: nullableText(row.image_url), thumbnailUrl: nullableText(row.thumbnail_url),
   gallery: strings(row.gallery).length ? strings(row.gallery) : strings(row.gallery_images), visibility: visibility(row.visibility), internalNotes: text(row.internal_notes), createdBy: nullableText(row.created_by), updatedBy: nullableText(row.updated_by),
 });
 
@@ -43,7 +48,7 @@ const toProductRow = (value: Partial<ProductDraft>) => defined({
   name: value.name?.trim(), description: value.description?.trim(), price: value.price, category: value.category?.trim(), sku: value.sku?.trim() || null,
   active: value.active, available: value.available, featured: value.featured, popular: value.popular, archived: value.archived, archived_at: value.archivedAt,
   vegetarian: value.vegetarian, vegan: value.vegan, halal: value.halal, gluten_free: value.glutenFree, preparation_time: value.preparationTime, calories: value.calories,
-  ingredients: value.ingredients, allergens: value.allergens, tags: value.tags, display_order: value.displayOrder, image_url: value.imageUrl, thumbnail_url: value.thumbnailUrl,
+  ingredients: value.ingredients, allergens: value.allergens, tags: value.tags, display_order: value.displayOrder, featured_order: value.featuredOrder, image_url: value.imageUrl, thumbnail_url: value.thumbnailUrl,
   gallery: value.gallery, gallery_images: value.gallery, visibility: value.visibility, internal_notes: value.internalNotes,
 });
 
@@ -55,8 +60,14 @@ export function validateProduct(value: ProductDraft): string | null {
   return null;
 }
 
-export async function getProducts() { const { data, error } = await client().from('products').select(productColumns).order('display_order').order('name'); if (error) fail(error); return (data ?? []).map(row => product(row as Row)); }
-export async function createProduct(value: ProductDraft) { const message = validateProduct(value); if (message) throw new Error(message); const { data, error } = await client().from('products').insert(toProductRow(value)).select(productColumns).single(); if (error) fail(error); return product(data as Row); }
+export async function getProducts() {
+  const primary = await client().from('products').select(productColumnsWithFeatured).order('display_order').order('name');
+  const result = primary.error ? await client().from('products').select(productColumns).order('display_order').order('name') : primary;
+  if (result.error) fail(result.error);
+  return ((result.data ?? []) as unknown as Row[]).map(row => product(row));
+}
+export async function createProduct(value: ProductDraft) { const message = validateProduct(value); if (message) throw new Error(message); const row = toProductRow(value); // featured_order is owned by the Featured Dishes page; new products enter unfeatured.
+  delete row.featured_order; const { data, error } = await client().from('products').insert(row).select(productColumns).single(); if (error) fail(error); return product(data as unknown as Row); }
 export async function updateProduct(id: string, value: Partial<ProductDraft>) { const { data, error } = await client().from('products').update(toProductRow(value)).eq('id', id).select(productColumns).single(); if (error) fail(error); return product(data as Row); }
 export async function deleteProduct(id: string) { const { error } = await client().from('products').delete().eq('id', id); if (error) fail(error); }
 export async function archiveProducts(ids: string[], archived = true) { const { error } = await client().from('products').update({ archived, archived_at: archived ? new Date().toISOString() : null }).in('id', ids); if (error) fail(error); }
@@ -80,6 +91,19 @@ export async function uploadProductImage(file: File, onProgress?: (progress: num
   onProgress?.(100); return client().storage.from(PRODUCT_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 export async function deleteProductImage(url: string) { const marker = `/storage/v1/object/public/${PRODUCT_BUCKET}/`; const path = url.includes(marker) ? decodeURIComponent(url.split(marker)[1] ?? '') : ''; if (!path) return; const { error } = await client().storage.from(PRODUCT_BUCKET).remove([path]); if (error) fail(error); }
+
+// Site branding assets (logo, homepage promo image) share the existing public
+// product-images bucket under a dedicated path so no new bucket policies are
+// needed. Public read already covers the whole bucket.
+export async function uploadBrandImage(file: File, folder: 'logo' | 'promo') {
+  validateImage(file);
+  const upload = await compressImage(file);
+  const extension = upload.name.split('.').pop() || 'png';
+  const path = `branding/${folder}-${crypto.randomUUID()}.${extension}`;
+  const { error } = await client().storage.from(PRODUCT_BUCKET).upload(path, upload, { cacheControl: '31536000', upsert: false, contentType: upload.type });
+  if (error) fail(error);
+  return client().storage.from(PRODUCT_BUCKET).getPublicUrl(path).data.publicUrl;
+}
 
 // ── Order mappers ──
 
@@ -168,6 +192,7 @@ const settings = (row: Row): RestaurantSettings => ({
   instagram: text(row.instagram),
   facebook: text(row.facebook),
   googleMaps: text(row.google_maps),
+  logoUrl: nullableText(row.logo_url),
   ordersEnabled: bool(row.orders_enabled),
   orderPauseMessage: text(row.order_pause_message),
 });
@@ -309,7 +334,9 @@ export async function getCustomers() {
 
 // ── Settings queries ──
 
-const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,instagram,facebook,google_maps,orders_enabled,order_pause_message';
+const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,instagram,facebook,google_maps,logo_url,orders_enabled,order_pause_message';
+// Pre-20260820-migration fallback: logo_url may not exist as a column yet.
+const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('logo_url,', '');
 
 // The table is expected to hold a single row. While duplicates exist, every
 // read and write must resolve to the same one: the oldest row (created_at,
@@ -317,9 +344,11 @@ const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours
 // the public site displays. Keep this ordering identical everywhere.
 
 export async function getSettings() {
-  const { data, error } = await client().from('restaurant_settings').select(SETTINGS_SELECT).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
-  if (error) fail(error);
-  return data ? settings(data as Row) : null;
+  const read = (columns: string) => client().from('restaurant_settings').select(columns).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
+  const primary = await read(SETTINGS_SELECT);
+  const result = primary.error ? await read(SETTINGS_SELECT_LEGACY) : primary;
+  if (result.error) fail(result.error);
+  return result.data ? settings(result.data as unknown as Row) : null;
 }
 
 export async function saveSettings(value: Partial<RestaurantSettings>) {
@@ -338,6 +367,7 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
     instagram: value.instagram,
     facebook: value.facebook,
     google_maps: value.googleMaps,
+    logo_url: value.logoUrl,
     orders_enabled: value.ordersEnabled,
     order_pause_message: value.orderPauseMessage,
   });
@@ -380,6 +410,76 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
       ? (value.ordersEnabled ? 'orders_resumed' : 'orders_paused')
       : 'settings_changed',
     details: Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined)),
+  });
+  if (auditError) console.error('Audit log insert failed', auditError);
+}
+
+// ── Homepage content queries ──
+
+const HOMEPAGE_SELECT = 'id,enabled,promo_type,title,description,price,image_url,button_text,button_link,start_date,end_date';
+
+const homepageContent = (row: Row): HomepageContent => ({
+  enabled: bool(row.enabled),
+  promoType: row.promo_type === 'weekly' ? 'weekly' : 'daily',
+  title: text(row.title),
+  description: text(row.description),
+  price: nullableNumber(row.price),
+  imageUrl: nullableText(row.image_url),
+  buttonText: text(row.button_text),
+  buttonLink: text(row.button_link),
+  startDate: nullableText(row.start_date),
+  endDate: nullableText(row.end_date),
+});
+
+const emptyHomepageContent = (): HomepageContent => ({
+  enabled: false, promoType: 'daily', title: '', description: '', price: null,
+  imageUrl: null, buttonText: '', buttonLink: '', startDate: null, endDate: null,
+});
+
+// Staff reads bypass the enabled-only public policy, so the admin form can
+// load a disabled row too.
+export async function getHomepageContent() {
+  const { data, error } = await client().from('homepage_content').select(HOMEPAGE_SELECT).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
+  if (error) fail(error);
+  return data ? homepageContent(data as Row) : emptyHomepageContent();
+}
+
+export async function saveHomepageContent(value: HomepageContent) {
+  if (value.enabled && !value.title.trim()) throw new Error('Add a title before enabling the homepage special.');
+
+  const row = {
+    enabled: value.enabled,
+    promo_type: value.promoType,
+    title: value.title.trim(),
+    description: value.description.trim(),
+    price: value.price,
+    image_url: value.imageUrl,
+    button_text: value.buttonText.trim(),
+    button_link: value.buttonLink.trim(),
+    start_date: value.startDate || null,
+    end_date: value.endDate || null,
+  };
+
+  // Same single-row discipline as restaurant_settings: update the oldest row,
+  // insert only when the table is empty. See saveSettings for why a blind
+  // upsert is unsafe here.
+  const { data: existing, error: lookupError } = await client().from('homepage_content').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
+  if (lookupError) fail(lookupError);
+  const existingId = existing ? text((existing as Row).id) : null;
+
+  if (existingId) {
+    const { error: updateError } = await client().from('homepage_content').update(row).eq('id', existingId).select('id').single();
+    if (updateError) fail(updateError);
+  } else {
+    const { error: insertError } = await client().from('homepage_content').insert(row).select('id').single();
+    if (insertError) fail(insertError);
+  }
+
+  const { data: { session } } = await client().auth.getSession();
+  const { error: auditError } = await client().from('admin_audit_log').insert({
+    user_id: session?.user?.id ?? null,
+    action: 'homepage_content_changed',
+    details: { enabled: row.enabled, title: row.title, promo_type: row.promo_type },
   });
   if (auditError) console.error('Audit log insert failed', auditError);
 }

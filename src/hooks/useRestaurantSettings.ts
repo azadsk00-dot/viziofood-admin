@@ -13,6 +13,7 @@ export interface PublicRestaurantSettings {
   googleMapsUrl: string;
   instagramUrl: string;
   facebookUrl: string;
+  logoUrl: string | null;
   openingHours: OpeningHours;
   deliveryFee: number;
   ordersEnabled: boolean;
@@ -42,7 +43,11 @@ export function formatOpeningHours(hours: OpeningHours): string[] {
     });
 }
 
-const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,delivery_fee,orders_enabled,order_pause_message';
+const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,logo_url,opening_hours,delivery_fee,orders_enabled,order_pause_message';
+// Before the 20260820 migration runs, the logo_url column may not exist yet —
+// selecting it fails the whole query. Fall back to the legacy column list so
+// phone/social/hours keep working; the logo activates once migrated.
+const selectLegacy = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,delivery_fee,orders_enabled,order_pause_message';
 
 /** Keeps document metadata + Restaurant JSON-LD in sync with DB settings. */
 function applyMetadata(s: PublicRestaurantSettings) {
@@ -89,6 +94,7 @@ const mapRow = (row: Record<string, unknown>): PublicRestaurantSettings => ({
   googleMapsUrl: typeof row.google_maps === 'string' ? row.google_maps : '',
   instagramUrl: typeof row.instagram === 'string' ? row.instagram : '',
   facebookUrl: typeof row.facebook === 'string' ? row.facebook : '',
+  logoUrl: typeof row.logo_url === 'string' && row.logo_url ? row.logo_url : null,
   openingHours: parseHours(row.opening_hours),
   deliveryFee: Number(row.delivery_fee ?? 0),
   ordersEnabled: row.orders_enabled !== false,
@@ -112,14 +118,23 @@ export function useRestaurantSettings() {
     if (!client) { setError('Supabase is not configured.'); setLoading(false); return; }
 
     const load = async () => {
-      const { data, error: queryError } = await client
+      // The table can briefly hold duplicate rows (and admin writes target
+      // the oldest one). Without this ordering Postgres returns an arbitrary
+      // row, so the public site displayed hours from a row admin never
+      // saves to. Must stay identical to the admin service's ordering.
+      const query = (columns: string) => client
         .from('restaurant_settings')
-        .select(select)
+        .select(columns)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
         .limit(1)
         .maybeSingle();
+      const primary = await query(select);
+      const result = primary.error ? await query(selectLegacy) : primary;
+      const { data, error: queryError } = result;
       if (queryError) setError(queryError.message);
       else {
-        const mapped = data ? mapRow(data as Record<string, unknown>) : null;
+        const mapped = data ? mapRow(data as unknown as Record<string, unknown>) : null;
         setSettings(mapped);
         if (mapped) applyMetadata(mapped);
       }

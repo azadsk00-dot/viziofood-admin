@@ -17,6 +17,9 @@ import {
   Reports,
 } from "./admin/pages";
 import { SettingsPage } from "./admin/Settings";
+import { HomepageContentPage } from "./admin/HomepageContentPage";
+import { FeaturedDishesPage } from "./admin/FeaturedDishesPage";
+import { BrandingPage } from "./admin/BrandingPage";
 
 import AdminLogin from "./pages/AdminLogin";
 import { CheckoutCancel, CheckoutSuccess } from "./pages/CheckoutResult";
@@ -84,6 +87,9 @@ export default function App() {
             {/* /admin/menu is the historical/bookmarked URL for the menu
                 manager — keep it working as an alias for the products page. */}
             <Route path="menu" element={<ProductManagement />} />
+            <Route path="featured" element={<FeaturedDishesPage />} />
+            <Route path="homepage" element={<HomepageContentPage />} />
+            <Route path="branding" element={<BrandingPage />} />
             <Route path="categories" element={<Categories />} />
             <Route path="customers" element={<Customers />} />
             <Route path="reports" element={<Reports />} />

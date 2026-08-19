@@ -23,6 +23,8 @@ export interface Product {
   allergens: string[];
   tags: string[];
   displayOrder: number;
+  /** Homepage showcase order — present once the 20260820 migration has run. */
+  featuredOrder?: number;
   imageUrl: string | null;
   thumbnailUrl: string | null;
   gallery: string[];
@@ -87,8 +89,24 @@ export interface RestaurantSettings {
   instagram: string;
   facebook: string;
   googleMaps: string;
+  logoUrl: string | null;
   ordersEnabled: boolean;
   orderPauseMessage: string;
+}
+
+export type HomepagePromoType = 'daily' | 'weekly';
+
+export interface HomepageContent {
+  enabled: boolean;
+  promoType: HomepagePromoType;
+  title: string;
+  description: string;
+  price: number | null;
+  imageUrl: string | null;
+  buttonText: string;
+  buttonLink: string;
+  startDate: string | null;
+  endDate: string | null;
 }
 
 export interface AuditLogEntry {

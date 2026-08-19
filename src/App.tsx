@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AdminRoute, StaffRoute } from "./components/ProtectedRoute";
@@ -53,6 +53,15 @@ function Public() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+
+  // The admin subdomain serves this same SPA; its root must land in the
+  // admin panel instead of the public homepage. Scoped by hostname so the
+  // public domain's "/" keeps rendering the public site.
+  if (window.location.hostname === "admin.viziofood.com" && pathname === "/") {
+    return <Navigate to="/admin" replace />;
+  }
+
   return (
     <ErrorBoundary>
       <Suspense fallback={<div className="admin-message">Loading...</div>}>

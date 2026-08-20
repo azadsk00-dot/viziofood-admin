@@ -16,6 +16,9 @@ export interface PublicRestaurantSettings {
   logoUrl: string | null;
   openingHours: OpeningHours;
   deliveryFee: number;
+  taxRate: number;
+  serviceChargeRate: number;
+  cardFeeRate: number;
   ordersEnabled: boolean;
   orderPauseMessage: string;
 }
@@ -43,11 +46,11 @@ export function formatOpeningHours(hours: OpeningHours): string[] {
     });
 }
 
-const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,logo_url,opening_hours,delivery_fee,orders_enabled,order_pause_message';
-// Before the 20260820 migration runs, the logo_url column may not exist yet —
-// selecting it fails the whole query. Fall back to the legacy column list so
-// phone/social/hours keep working; the logo activates once migrated.
-const selectLegacy = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,delivery_fee,orders_enabled,order_pause_message';
+const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,logo_url,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,orders_enabled,order_pause_message';
+// Before the 20260821 migration runs, the new columns may not exist yet —
+// selecting them fails the whole query. Fall back to the legacy column list
+// so phone/social/hours keep working; the new charges activate once migrated.
+const selectLegacy = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,opening_hours,delivery_fee,tax_rate,orders_enabled,order_pause_message';
 
 /** Keeps document metadata + Restaurant JSON-LD in sync with DB settings. */
 function applyMetadata(s: PublicRestaurantSettings) {
@@ -97,6 +100,9 @@ const mapRow = (row: Record<string, unknown>): PublicRestaurantSettings => ({
   logoUrl: typeof row.logo_url === 'string' && row.logo_url ? row.logo_url : null,
   openingHours: parseHours(row.opening_hours),
   deliveryFee: Number(row.delivery_fee ?? 0),
+  taxRate: Number(row.tax_rate ?? 0),
+  serviceChargeRate: Number(row.service_charge ?? 0),
+  cardFeeRate: Number(row.card_processing_fee ?? 0),
   ordersEnabled: row.orders_enabled !== false,
   orderPauseMessage: typeof row.order_pause_message === 'string' ? row.order_pause_message : '',
 });

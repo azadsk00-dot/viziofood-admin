@@ -28,6 +28,14 @@ const defaultHours = (): OpeningHours =>
 
 const emptyDay = (): DayHours => ({ open: '', close: '', closed: true });
 
+// Surfaces the underlying PostgREST error (message + code) instead of a
+// generic "failed" so admin issues are diagnosable from the toast alone.
+const describeError = (err: unknown, fallback: string): string => {
+  if (!(err instanceof Error)) return fallback;
+  const code = (err as Error & { code?: string }).code;
+  return code ? `${err.message} (${code})` : err.message;
+};
+
 export function SettingsPage() {
   const resource = useResource(getSettings);
   const toast = useToast();
@@ -45,7 +53,9 @@ export function SettingsPage() {
   const [instagram, setInstagram] = useState('');
   const [facebook, setFacebook] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(0);
-  const [taxRate, setTaxRate] = useState(10);
+  const [taxRate, setTaxRate] = useState(0);
+  const [serviceChargeRate, setServiceChargeRate] = useState(0);
+  const [cardFeeRate, setCardFeeRate] = useState(0);
   const [openingHours, setOpeningHours] = useState<OpeningHours>(defaultHours);
   const [ordersEnabled, setOrdersEnabled] = useState(true);
   const [orderPauseMessage, setOrderPauseMessage] = useState('');
@@ -58,6 +68,7 @@ export function SettingsPage() {
     setAddress(s.address); setSuburb(s.suburb); setState(s.state); setPostcode(s.postcode);
     setGoogleMaps(s.googleMaps); setInstagram(s.instagram); setFacebook(s.facebook);
     setDeliveryFee(s.deliveryFee); setTaxRate(s.taxRate);
+    setServiceChargeRate(s.serviceChargeRate); setCardFeeRate(s.cardFeeRate);
     setOpeningHours(Object.keys(s.openingHours).length ? s.openingHours : defaultHours());
     setOrdersEnabled(s.ordersEnabled); setOrderPauseMessage(s.orderPauseMessage);
   }, [resource.data]);
@@ -73,15 +84,16 @@ export function SettingsPage() {
       await saveSettings({
         name, phone, email, address, suburb, state, postcode,
         googleMaps, instagram, facebook, deliveryFee, taxRate,
+        serviceChargeRate, cardFeeRate,
         openingHours, ordersEnabled, orderPauseMessage,
       });
       toast.show('Settings saved.');
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'Could not save settings.', 'error');
+      toast.show(describeError(err, 'Could not save settings.'), 'error');
     } finally {
       setSaving(false);
     }
-  }, [name, phone, email, address, suburb, state, postcode, googleMaps, instagram, facebook, deliveryFee, taxRate, openingHours, ordersEnabled, orderPauseMessage, toast]);
+  }, [name, phone, email, address, suburb, state, postcode, googleMaps, instagram, facebook, deliveryFee, taxRate, serviceChargeRate, cardFeeRate, openingHours, ordersEnabled, orderPauseMessage, toast]);
 
   const toggleOrders = useCallback(async () => {
     const next = !ordersEnabled;
@@ -92,7 +104,7 @@ export function SettingsPage() {
       toast.show(next ? 'Online ordering enabled.' : 'Online ordering paused.');
     } catch (err) {
       setOrdersEnabled(!next); // revert
-      toast.show(err instanceof Error ? err.message : 'Could not update ordering status.', 'error');
+      toast.show(describeError(err, 'Could not update ordering status.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -240,11 +252,11 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* ── Delivery & Tax ── */}
+      {/* ── Delivery & Charges ── */}
       <section className="admin-card settings-section">
         <div className="settings-section-header">
           <MessageSquare size={18} />
-          <h2>Delivery &amp; Tax</h2>
+          <h2>Delivery &amp; Charges</h2>
         </div>
         <div className="admin-form settings-grid">
           <label className="settings-field">
@@ -255,7 +267,18 @@ export function SettingsPage() {
             <span>Tax rate (%)</span>
             <input type="number" step="0.01" min="0" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} />
           </label>
+          <label className="settings-field">
+            <span>Service charge (%)</span>
+            <input type="number" step="0.01" min="0" value={serviceChargeRate} onChange={e => setServiceChargeRate(Number(e.target.value))} />
+          </label>
+          <label className="settings-field">
+            <span>Card processing fee (%)</span>
+            <input type="number" step="0.01" min="0" value={cardFeeRate} onChange={e => setCardFeeRate(Number(e.target.value))} />
+          </label>
         </div>
+        <p className="settings-hint">
+          Percentages apply to the order subtotal; the card processing fee applies to the checkout amount before the fee itself. Delivery fee is a fixed amount charged for Delivery orders only. All four feed the public checkout and the Stripe total.
+        </p>
       </section>
     </section>
   );

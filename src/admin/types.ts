@@ -86,6 +86,8 @@ export interface RestaurantSettings {
   openingHours: OpeningHours;
   deliveryFee: number;
   taxRate: number;
+  serviceChargeRate: number;
+  cardFeeRate: number;
   instagram: string;
   facebook: string;
   googleMaps: string;

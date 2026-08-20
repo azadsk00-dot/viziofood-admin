@@ -189,6 +189,8 @@ const settings = (row: Row): RestaurantSettings => ({
   openingHours: parseOpeningHours(row.opening_hours),
   deliveryFee: number(row.delivery_fee),
   taxRate: number(row.tax_rate),
+  serviceChargeRate: number(row.service_charge),
+  cardFeeRate: number(row.card_processing_fee),
   instagram: text(row.instagram),
   facebook: text(row.facebook),
   googleMaps: text(row.google_maps),
@@ -334,9 +336,10 @@ export async function getCustomers() {
 
 // ── Settings queries ──
 
-const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,instagram,facebook,google_maps,logo_url,orders_enabled,order_pause_message';
-// Pre-20260820-migration fallback: logo_url may not exist as a column yet.
-const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('logo_url,', '');
+const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,instagram,facebook,google_maps,logo_url,orders_enabled,order_pause_message';
+// Pre-migration fallback: service_charge / card_processing_fee / logo_url may
+// not exist as columns yet. Both lists stay in sync with the 20260821 migration.
+const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('service_charge,card_processing_fee,', '').replace('logo_url,', '');
 
 // The table is expected to hold a single row. While duplicates exist, every
 // read and write must resolve to the same one: the oldest row (created_at,
@@ -351,6 +354,14 @@ export async function getSettings() {
   return result.data ? settings(result.data as unknown as Row) : null;
 }
 
+// Columns added by the 20260821 migration. Splitting them out lets the save
+// fall back to the legacy column set when the migration hasn't been applied,
+// so settings/branding saves keep working instead of failing wholesale.
+const NEW_SETTING_COLUMNS = ['logo_url', 'service_charge', 'card_processing_fee'] as const;
+
+const isMissingColumn = (error: { code?: string; message?: string } | null | undefined) =>
+  error?.code === '42703' || error?.code === 'PGRST204';
+
 export async function saveSettings(value: Partial<RestaurantSettings>) {
   const row = defined({
     name: value.name,
@@ -364,6 +375,8 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
     opening_hours: value.openingHours,
     delivery_fee: value.deliveryFee,
     tax_rate: value.taxRate,
+    service_charge: value.serviceChargeRate,
+    card_processing_fee: value.cardFeeRate,
     instagram: value.instagram,
     facebook: value.facebook,
     google_maps: value.googleMaps,
@@ -372,44 +385,68 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
     order_pause_message: value.orderPauseMessage,
   });
 
-  // Update the existing settings row by id; insert only when the table is
-  // empty. A blind upsert would insert a duplicate row on every save (the id
-  // is random), and a bare update reports success even when RLS filters it
-  // to zero rows — .select().single() surfaces both as errors.
-  const { data: existing, error: lookupError } = await client().from('restaurant_settings').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
-  if (lookupError) fail(lookupError);
-  const existingId = existing ? text((existing as Row).id) : null;
+  // Pre-migration: the new columns may not exist. Retry without them and, if
+  // any were actually part of this save, report clearly (after persisting the
+  // rest) instead of silently dropping them.
+  let rowToSend = row;
+  const attempt = async (payload: Row) => {
+    // Update the existing settings row by id; insert only when the table is
+    // empty. A blind upsert would insert a duplicate row on every save (the
+    // id is random), and a bare update reports success even when RLS filters
+    // it to zero rows — .select().single() surfaces both as errors.
+    const { data: existing, error: lookupError } = await client().from('restaurant_settings').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
+    if (lookupError) fail(lookupError);
+    const existingId = existing ? text((existing as Row).id) : null;
 
-  if (existingId) {
-    const { data: updated, error: updateError } = await client()
-      .from('restaurant_settings')
-      .update(row)
-      .eq('id', existingId)
-      .select('id')
-      .single();
-    if (updateError) fail(updateError.code === 'PGRST116'
-      ? new Error('Settings were not saved — no settings row was updated. Your account may not have admin permissions.')
-      : updateError);
-    if (!updated) fail(new Error('Settings were not saved — no settings row was updated.'));
-  } else {
+    if (existingId) {
+      const { data: updated, error: updateError } = await client()
+        .from('restaurant_settings')
+        .update(payload)
+        .eq('id', existingId)
+        .select('id')
+        .single();
+      if (updateError) return { error: updateError };
+      if (!updated) return { error: new Error('Settings were not saved — no settings row was updated.') as Error & { code?: string } };
+      return { error: null };
+    }
     const { data: inserted, error: insertError } = await client()
       .from('restaurant_settings')
-      .insert(row)
+      .insert(payload)
       .select('id')
       .single();
-    if (insertError) fail(insertError);
-    if (!inserted) fail(new Error('Settings could not be created.'));
+    if (insertError) return { error: insertError };
+    if (!inserted) return { error: new Error('Settings could not be created.') as Error & { code?: string } };
+    return { error: null };
+  };
+
+  let outcome = await attempt(rowToSend);
+  let skippedNewColumns: string[] = [];
+  if (isMissingColumn(outcome.error)) {
+    skippedNewColumns = NEW_SETTING_COLUMNS.filter(column => column in rowToSend);
+    rowToSend = Object.fromEntries(Object.entries(rowToSend).filter(([key]) => !(NEW_SETTING_COLUMNS as readonly string[]).includes(key)));
+    // A logo/charges-only save has nothing left to persist pre-migration —
+    // skip the empty update and let the migration message below explain.
+    outcome = Object.keys(rowToSend).length
+      ? await attempt(rowToSend)
+      : { error: null };
   }
+  if (outcome.error) fail(outcome.error.code === 'PGRST116'
+    ? new Error('Settings were not saved — no settings row was updated. Your account may not have admin permissions.')
+    : outcome.error);
+  if (skippedNewColumns.length) {
+    throw new Error('Saved, but the database is missing new columns (' + skippedNewColumns.join(', ') + '). Run the 20260821 Supabase migration to enable logo and charge settings.');
+  }
+  const saved = rowToSend;
 
   // Audit — a failed audit write must not misreport the save outcome.
   const { data: { session } } = await client().auth.getSession();
-  const changedOrdersToggle = 'orders_enabled' in row;
+  const changedOrdersToggle = 'orders_enabled' in saved;
   const { error: auditError } = await client().from('admin_audit_log').insert({
     user_id: session?.user?.id ?? null,
     action: changedOrdersToggle
       ? (value.ordersEnabled ? 'orders_resumed' : 'orders_paused')
       : 'settings_changed',
-    details: Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined)),
+    details: Object.fromEntries(Object.entries(saved).filter(([, v]) => v !== undefined)),
   });
   if (auditError) console.error('Audit log insert failed', auditError);
 }

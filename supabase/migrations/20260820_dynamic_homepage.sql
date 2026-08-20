@@ -33,9 +33,12 @@ create table if not exists public.homepage_content (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists homepage_content_updated_at on public.homepage_content;
 create trigger homepage_content_updated_at
   before update on public.homepage_content
   for each row execute procedure public.set_updated_at();
+-- Note (2026-08-21): this file was never applied to production; 20260821_
+-- checkout_charges.sql is the self-sufficient idempotent version to run.
 
 alter table public.homepage_content enable row level security;
 
@@ -70,8 +73,6 @@ create index if not exists products_homepage_featured_idx
   on public.products (featured_order, display_order, name)
   where featured = true and archived = false;
 
--- logo_url was declared in the 20260718 migration but never applied to this
--- project — the public/admin selects reference it, so guarantee it exists.
 alter table public.restaurant_settings
   add column if not exists logo_url text;
 

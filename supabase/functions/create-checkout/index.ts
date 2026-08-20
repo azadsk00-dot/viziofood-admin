@@ -51,11 +51,30 @@ Deno.serve(async (request: Request) => {
 
   try {
     // ── Check if ordering is enabled (server-side enforcement) ──
-    const { data: settings, error: settingsError } = await db
-      .from('restaurant_settings')
-      .select('orders_enabled, order_pause_message, delivery_fee')
-      .limit(1)
-      .maybeSingle();
+    // Deterministic ordering (created_at, id) resolves the singleton row the
+    // same way the admin panel and the public site do. Before the 20260821
+    // migration runs, service_charge/card_processing_fee may not exist as
+    // columns — fall back to the legacy list with those rates at 0 so
+    // checkout keeps working.
+    const settingsQuery = (columns: string) =>
+      db
+        .from('restaurant_settings')
+        .select(columns)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    let { data: settings, error: settingsError } = await settingsQuery(
+      'orders_enabled, order_pause_message, delivery_fee, tax_rate, service_charge, card_processing_fee',
+    );
+    if (settingsError?.code === '42703') {
+      const legacy = await settingsQuery(
+        'orders_enabled, order_pause_message, delivery_fee, tax_rate',
+      );
+      settings = { ...legacy.data, service_charge: 0, card_processing_fee: 0 };
+      settingsError = legacy.error;
+    }
 
     if (settingsError) {
       console.error('Settings fetch error:', settingsError);
@@ -89,10 +108,16 @@ Deno.serve(async (request: Request) => {
 
     // Integer-cent arithmetic mirrors src/cart.ts totals() exactly, so the
     // Stripe charge, the stored order total and the checkout page total are
-    // identical by construction. GST is 10% (matching the frontend's TAX_RATE)
-    // and the delivery fee is the configured restaurant_settings value —
-    // $0 for Pickup.
-    const TAX_RATE = 0.1;
+    // identical by construction. All rates come from restaurant_settings
+    // (Admin → Settings → Delivery & Charges) — nothing is hardcoded here.
+    // Formula (each component rounded to cents independently):
+    //   service  = round(subtotal × serviceCharge%)
+    //   tax      = round(subtotal × tax%)           (tax basis: subtotal)
+    //   delivery = fixed fee, Delivery orders only
+    //   card fee = round((subtotal + service + tax + delivery) × cardFee%)
+    //              — base excludes the fee itself, so there is no circular
+    //              calculation
+    //   total    = subtotal + service + tax + delivery + card fee
     const itemUnitCents = cart.items.map(
       (item: { price: number; modifiers: { price: number }[] }) =>
         Math.round(
@@ -113,28 +138,57 @@ Deno.serve(async (request: Request) => {
     const deliveryCents = isDelivery
       ? Math.round(Number(settings?.delivery_fee ?? 0) * 100)
       : 0;
-    const taxCents = Math.round(subtotalCents * TAX_RATE);
-    const totalCents = subtotalCents + taxCents + deliveryCents;
+    const taxRatePct = Number(settings?.tax_rate ?? 0);
+    const serviceRatePct = Number(settings?.service_charge ?? 0);
+    const cardFeeRatePct = Number(settings?.card_processing_fee ?? 0);
+    const serviceCents = Math.round(subtotalCents * serviceRatePct / 100);
+    const taxCents = Math.round(subtotalCents * taxRatePct / 100);
+    const cardFeeCents = Math.round(
+      (subtotalCents + serviceCents + taxCents + deliveryCents) *
+        cardFeeRatePct / 100,
+    );
+    const totalCents =
+      subtotalCents + serviceCents + taxCents + deliveryCents + cardFeeCents;
     const itemsCount = cart.items.reduce(
       (sum: number, item: { quantity: number }) => sum + item.quantity,
       0,
     );
 
     // ── 1. Stage the order (payment_status stays pending until the webhook
-    //      confirms payment) ──
-    const { data: order, error: orderError } = await db
-      .from('orders')
-      .insert({
-        customer_name: customer.name,
-        customer_email: customer.email,
-        customer_phone: customer.phone ?? '',
-        total: totalCents / 100,
-        items_count: itemsCount,
-        status: 'New',
-        payment_status: 'pending',
-      })
-      .select('id')
-      .single();
+    //      confirms payment). The charge breakdown is persisted here so later
+    //      settings changes never rewrite historical orders. Before the
+    //      20260821 migration, the breakdown columns may not exist — the
+    //      legacy insert stores the total only. ──
+    const insertOrder = (breakdown: boolean) =>
+      db
+        .from('orders')
+        .insert({
+          customer_name: customer.name,
+          customer_email: customer.email,
+          customer_phone: customer.phone ?? '',
+          ...(breakdown
+            ? {
+                subtotal: subtotalCents / 100,
+                tax_total: taxCents / 100,
+                delivery_fee: deliveryCents / 100,
+                service_charge: serviceCents / 100,
+                card_processing_fee: cardFeeCents / 100,
+              }
+            : {}),
+          total: totalCents / 100,
+          items_count: itemsCount,
+          status: 'New',
+          payment_status: 'pending',
+        })
+        .select('id')
+        .single();
+
+    let { data: order, error: orderError } = await insertOrder(true);
+    if (orderError?.code === '42703') {
+      const legacy = await insertOrder(false);
+      order = legacy.data;
+      orderError = legacy.error;
+    }
     if (orderError) throw orderError;
 
     // ── 2. Persist items + initial status history, then create the session.
@@ -189,15 +243,26 @@ Deno.serve(async (request: Request) => {
               },
             }),
           ),
-          // GST and delivery are explicit lines so the Stripe page total
-          // equals the checkout page total exactly.
+          // Charges are explicit lines so the Stripe page total equals the
+          // checkout page total exactly. Rates come from settings, so the
+          // labels state the applied rate rather than a hardcoded "10%".
+          ...(serviceCents > 0
+            ? [{
+                quantity: 1,
+                price_data: {
+                  currency: 'aud',
+                  unit_amount: serviceCents,
+                  product_data: { name: `Service charge (${serviceRatePct}%)` },
+                },
+              }]
+            : []),
           ...(taxCents > 0
             ? [{
                 quantity: 1,
                 price_data: {
                   currency: 'aud',
                   unit_amount: taxCents,
-                  product_data: { name: 'GST (10%)' },
+                  product_data: { name: `Tax (${taxRatePct}%)` },
                 },
               }]
             : []),
@@ -208,6 +273,18 @@ Deno.serve(async (request: Request) => {
                   currency: 'aud',
                   unit_amount: deliveryCents,
                   product_data: { name: 'Delivery' },
+                },
+              }]
+            : []),
+          ...(cardFeeCents > 0
+            ? [{
+                quantity: 1,
+                price_data: {
+                  currency: 'aud',
+                  unit_amount: cardFeeCents,
+                  product_data: {
+                    name: `Card processing fee (${cardFeeRatePct}%)`,
+                  },
                 },
               }]
             : []),

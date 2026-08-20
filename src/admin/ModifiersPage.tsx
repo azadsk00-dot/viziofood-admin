@@ -27,6 +27,17 @@ export function parseModifierPrice(text: string): { price: number } | { error: s
 // them as a clear message instead of the raw constraint text.
 const isDuplicateName = (error: unknown) => (error as { code?: string } | null)?.code === '23505';
 
+// Option names are unique per GROUP (case-insensitively) — the same name in
+// different groups is valid. Mirrors the database index
+// modifiers_group_name_ci_unique_idx on (group_id, lower(trim(name))).
+// `siblingNames` are the existing option names in the SAME group; the edited
+// option's own name is excluded so saving without renaming always passes.
+export function findDuplicateInGroup(name: string, siblingNames: string[], editingName?: string): string | undefined {
+  const target = name.trim().toLowerCase();
+  if (!target) return undefined;
+  return siblingNames.find(existing => existing.trim().toLowerCase() === target && existing !== editingName);
+}
+
 function GroupEditor({ item, done, close }: { item?: ModifierGroup; done: () => Promise<void>; close: () => void }) {
   const [value, setValue] = useState<Omit<ModifierGroup, 'id'>>(item ? { ...item } : blankGroup());
   const [busy, setBusy] = useState(false);
@@ -68,7 +79,7 @@ function GroupEditor({ item, done, close }: { item?: ModifierGroup; done: () => 
   );
 }
 
-function OptionEditor({ groupId, item, existingNames = [], done, close }: { groupId: string; item?: ModifierOption; existingNames?: string[]; done: () => Promise<void>; close: () => void }) {
+function OptionEditor({ groupId, item, siblingNames = [], done, close }: { groupId: string; item?: ModifierOption; siblingNames?: string[]; done: () => Promise<void>; close: () => void }) {
   const [value, setValue] = useState<Omit<ModifierOption, 'id'>>(item ? { ...item } : blankOption(groupId));
   // Price is edited as text so Backspace can empty the field and "2."/"2.50"
   // survive mid-typing; the numeric conversion happens once, on save.
@@ -80,12 +91,10 @@ function OptionEditor({ groupId, item, existingNames = [], done, close }: { grou
     event.preventDefault();
     const name = value.name.trim();
     if (!name) { toast.show('Option name is required.', 'error'); return; }
-    // Names are unique in the database (case-sensitively). Checking against
-    // every existing option case-insensitively makes the behaviour consistent
-    // regardless of capitalisation and stops near-duplicates like
-    // "Extra Pasta" vs "extra pasta" from piling up.
-    const clash = existingNames.find(existing => existing.toLowerCase() === name.toLowerCase() && existing !== item?.name);
-    if (clash) { toast.show(`An option named “${clash}” already exists — option names must be unique.`, 'error'); return; }
+    // Uniqueness is per group and case-insensitive — the same name may exist
+    // in any OTHER group; only a clash inside this group is rejected.
+    const clash = findDuplicateInGroup(name, siblingNames, item?.name);
+    if (clash) { toast.show(`An option named “${clash}” already exists in this group.`, 'error'); return; }
     const parsedPrice = parseModifierPrice(priceText);
     if ('error' in parsedPrice) { toast.show(parsedPrice.error, 'error'); return; }
     setBusy(true);
@@ -96,7 +105,7 @@ function OptionEditor({ groupId, item, existingNames = [], done, close }: { grou
       toast.show('Option saved');
       close();
     } catch (error) {
-      if (isDuplicateName(error)) { toast.show(`An option named “${name}” already exists — option names must be unique.`, 'error'); return; }
+      if (isDuplicateName(error)) { toast.show(`An option named “${name}” already exists in this group.`, 'error'); return; }
       toast.show(error instanceof Error ? error.message : 'Could not save option.', 'error');
     } finally { setBusy(false); }
   };
@@ -130,6 +139,8 @@ export function ModifiersPage() {
     return (groups.data ?? []).filter(g => !term || g.name.toLowerCase().includes(term));
   }, [groups.data, search]);
   const optionsFor = (groupId: string) => (options.data ?? []).filter(o => o.groupId === groupId);
+  // Sibling names drive the per-group duplicate check in the option editor.
+  const namesInGroup = (groupId: string) => optionsFor(groupId).map(option => option.name);
 
   // Group order is rewritten 1..n across the full list (index resolved
   // against all groups so reordering stays correct while filtering).
@@ -268,8 +279,8 @@ export function ModifiersPage() {
       </section>
       {addingGroup && <GroupEditor close={() => setAddingGroup(false)} done={reload} />}
       {groupEditor && <GroupEditor item={groupEditor} close={() => setGroupEditor(undefined)} done={reload} />}
-      {addingOption && <OptionEditor groupId={addingOption} existingNames={(options.data ?? []).map(option => option.name)} close={() => setAddingOption(undefined)} done={reload} />}
-      {optionEditor && <OptionEditor groupId={optionEditor.groupId} item={optionEditor.option} existingNames={(options.data ?? []).map(option => option.name)} close={() => setOptionEditor(undefined)} done={reload} />}
+      {addingOption && <OptionEditor groupId={addingOption} siblingNames={namesInGroup(addingOption)} close={() => setAddingOption(undefined)} done={reload} />}
+      {optionEditor && <OptionEditor groupId={optionEditor.groupId} item={optionEditor.option} siblingNames={namesInGroup(optionEditor.groupId)} close={() => setOptionEditor(undefined)} done={reload} />}
     </section>
   );
 }

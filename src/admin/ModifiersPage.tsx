@@ -10,6 +10,23 @@ const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'curren
 const blankGroup = (): Omit<ModifierGroup, 'id'> => ({ name: '', required: false, minSelections: 0, maxSelections: 0, active: true, displayOrder: 0 });
 const blankOption = (groupId: string): Omit<ModifierOption, 'id'> => ({ groupId, name: '', description: '', price: 0, active: true, displayOrder: 0 });
 
+// The price field edits as free text so intermediate states ("", "2.", "2.50")
+// stay exactly as typed; this converts to a number only at save time.
+// Empty is treated as 0 (the established default); anything that is not a
+// finite non-negative number is a validation error.
+export function parseModifierPrice(text: string): { price: number } | { error: string } {
+  const trimmed = text.trim();
+  if (trimmed === '') return { price: 0 };
+  const price = Number(trimmed);
+  if (!Number.isFinite(price)) return { error: 'Enter a valid price (e.g. 2.50).' };
+  if (price < 0) return { error: 'Price cannot be negative.' };
+  return { price };
+}
+
+// Postgres unique violations arrive as PostgREST error code 23505 — surface
+// them as a clear message instead of the raw constraint text.
+const isDuplicateName = (error: unknown) => (error as { code?: string } | null)?.code === '23505';
+
 function GroupEditor({ item, done, close }: { item?: ModifierGroup; done: () => Promise<void>; close: () => void }) {
   const [value, setValue] = useState<Omit<ModifierGroup, 'id'>>(item ? { ...item } : blankGroup());
   const [busy, setBusy] = useState(false);
@@ -31,6 +48,7 @@ function GroupEditor({ item, done, close }: { item?: ModifierGroup; done: () => 
       toast.show('Modifier group saved');
       close();
     } catch (error) {
+      if (isDuplicateName(error)) { toast.show(`A group named “${value.name.trim()}” already exists — group names must be unique.`, 'error'); return; }
       toast.show(error instanceof Error ? error.message : 'Could not save group.', 'error');
     } finally { setBusy(false); }
   };
@@ -50,22 +68,35 @@ function GroupEditor({ item, done, close }: { item?: ModifierGroup; done: () => 
   );
 }
 
-function OptionEditor({ groupId, item, done, close }: { groupId: string; item?: ModifierOption; done: () => Promise<void>; close: () => void }) {
+function OptionEditor({ groupId, item, existingNames = [], done, close }: { groupId: string; item?: ModifierOption; existingNames?: string[]; done: () => Promise<void>; close: () => void }) {
   const [value, setValue] = useState<Omit<ModifierOption, 'id'>>(item ? { ...item } : blankOption(groupId));
+  // Price is edited as text so Backspace can empty the field and "2."/"2.50"
+  // survive mid-typing; the numeric conversion happens once, on save.
+  const [priceText, setPriceText] = useState(item ? String(item.price) : '0');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue(v => ({ ...v, [key]: next }));
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!value.name.trim()) { toast.show('Option name is required.', 'error'); return; }
+    const name = value.name.trim();
+    if (!name) { toast.show('Option name is required.', 'error'); return; }
+    // Names are unique in the database (case-sensitively). Checking against
+    // every existing option case-insensitively makes the behaviour consistent
+    // regardless of capitalisation and stops near-duplicates like
+    // "Extra Pasta" vs "extra pasta" from piling up.
+    const clash = existingNames.find(existing => existing.toLowerCase() === name.toLowerCase() && existing !== item?.name);
+    if (clash) { toast.show(`An option named “${clash}” already exists — option names must be unique.`, 'error'); return; }
+    const parsedPrice = parseModifierPrice(priceText);
+    if ('error' in parsedPrice) { toast.show(parsedPrice.error, 'error'); return; }
     setBusy(true);
     try {
-      if (item) await updateModifier(item.id, value);
-      else await createModifier(value);
+      if (item) await updateModifier(item.id, { ...value, name, price: parsedPrice.price });
+      else await createModifier({ ...value, name, price: parsedPrice.price });
       await done();
       toast.show('Option saved');
       close();
     } catch (error) {
+      if (isDuplicateName(error)) { toast.show(`An option named “${name}” already exists — option names must be unique.`, 'error'); return; }
       toast.show(error instanceof Error ? error.message : 'Could not save option.', 'error');
     } finally { setBusy(false); }
   };
@@ -73,7 +104,7 @@ function OptionEditor({ groupId, item, done, close }: { groupId: string; item?: 
     <Modal title={item ? 'Edit option' : 'Add option'} onClose={close}>
       <form className="admin-form" onSubmit={save}>
         <label>Name<input required value={value.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Beef Bacon" /></label>
-        <label>Price added<input type="number" min="0" step=".01" value={value.price} onChange={e => set('price', Number(e.target.value))} /></label>
+        <label>Price added<input type="text" inputMode="decimal" autoComplete="off" value={priceText} onChange={e => setPriceText(e.target.value)} placeholder="0" /></label>
         <label>Description<textarea rows={2} value={value.description} onChange={e => set('description', e.target.value)} placeholder="Optional — shown to admins" /></label>
         <label className="check-label"><input type="checkbox" checked={value.active} onChange={e => set('active', e.target.checked)} />Active — selectable by customers</label>
         <button className="admin-primary" disabled={busy}>{busy ? 'Saving…' : 'Save option'}</button>
@@ -237,8 +268,8 @@ export function ModifiersPage() {
       </section>
       {addingGroup && <GroupEditor close={() => setAddingGroup(false)} done={reload} />}
       {groupEditor && <GroupEditor item={groupEditor} close={() => setGroupEditor(undefined)} done={reload} />}
-      {addingOption && <OptionEditor groupId={addingOption} close={() => setAddingOption(undefined)} done={reload} />}
-      {optionEditor && <OptionEditor groupId={optionEditor.groupId} item={optionEditor.option} close={() => setOptionEditor(undefined)} done={reload} />}
+      {addingOption && <OptionEditor groupId={addingOption} existingNames={(options.data ?? []).map(option => option.name)} close={() => setAddingOption(undefined)} done={reload} />}
+      {optionEditor && <OptionEditor groupId={optionEditor.groupId} item={optionEditor.option} existingNames={(options.data ?? []).map(option => option.name)} close={() => setOptionEditor(undefined)} done={reload} />}
     </section>
   );
 }

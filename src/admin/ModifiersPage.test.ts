@@ -48,4 +48,24 @@ describe('findDuplicateInGroup', () => {
     expect(findDuplicateInGroup('Extra Pasta', ['Beef', 'Chicken'])).toBeUndefined();
     expect(findDuplicateInGroup('Truffle', ['Parmesan'])).toBeUndefined();
   });
+
+  // Production incident (2026-08): "Extra Parmesan cheese" existed in
+  // "Extra in fusilli" and adding the exact same name to "Extra in Caserecce"
+  // was rejected. The frontend per-group check was correct; the live database
+  // still enforced the global UNIQUE(name) from the 20260822 migration because
+  // 20260824_modifier_option_uniqueness.sql had not been applied. These tests
+  // pin the per-group rule the UI must keep enforcing, with the real group
+  // contents from that incident, so a refactor can never reintroduce a
+  // global-name check on the client.
+  it('incident: Extra Parmesan cheese is allowed in every group that does not already list it', () => {
+    const caserecce = ['Extra Meat', 'extra Pasta', 'Extra saucE'];
+    const fusilli = ['Extra Parmesan cheese', 'Extra pasta', 'Extra sauce'];
+    const campanelle = ['Extra Pasta', 'Extra Prawns', 'Extra Sauce', 'Extra Vegetables'];
+    expect(findDuplicateInGroup('Extra Parmesan cheese', caserecce)).toBeUndefined();
+    expect(findDuplicateInGroup('Extra Parmesan cheese', campanelle)).toBeUndefined();
+    // Already present in fusilli — a second one there is rejected…
+    expect(findDuplicateInGroup('Extra Parmesan cheese', fusilli)).toBe('Extra Parmesan cheese');
+    // …including as a case variant.
+    expect(findDuplicateInGroup('extra parmesan cheese', fusilli)).toBe('Extra Parmesan cheese');
+  });
 });

@@ -1,0 +1,21 @@
+-- Placeholder for remote-applied migration 20260823 — COMMENTS ONLY, NO SQL.
+--
+-- Context: this version exists in the linked project's migration history
+-- (wxqrapnsowhnmvwmocxc) but its original file was never committed to this
+-- repository and has been lost. This placeholder exists solely so that the
+-- local migrations directory aligns with remote history; the version is
+-- already recorded as applied remotely and this file must never execute.
+--
+-- Effects of the original migration could not be recovered exactly. Production
+-- contains the following objects that no committed local migration creates,
+-- attributed to this migration (matches commit 3d3c405 "Add modifier groups,
+-- product assignment and category management"), verified read-only on 2026-08-21:
+--   * public.categories.display_order and public.categories.active columns
+--   * public.products.spice_level and public.products.featured_order columns
+--   * possibly public.modifier_groups / public.product_modifier_groups tables
+--     (also present in 20260718_management_platform.sql, which was only
+--     partially applied to production)
+--
+-- NOTE for `supabase db reset`: because the real DDL is not preserved here, a
+-- local reset will NOT recreate these objects. Reconstructing the DDL from
+-- production is a known follow-up task.

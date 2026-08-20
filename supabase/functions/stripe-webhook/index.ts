@@ -14,6 +14,39 @@ const isUuid = (value: string) =>
     value,
   );
 
+// Fire-and-forget push notification for new paid orders. NEVER throws — a
+// push failure must not fail checkout processing (the response to Stripe
+// must stay 200 so the webhook is not replayed for this).
+async function notifyNewPaidOrder(
+  orderId: string,
+  orderNumber: string,
+  total: number,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/push-notifications`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({
+          action: 'notify-new-order',
+          orderId,
+          orderNumber,
+          total,
+        }),
+      },
+    );
+    if (!res.ok) {
+      console.error('push notify failed:', res.status, await res.text());
+    }
+  } catch (error) {
+    console.error('push notify error:', error);
+  }
+}
+
 Deno.serve(async (request: Request) => {
   const signature = request.headers.get('stripe-signature');
   if (!signature) {
@@ -52,7 +85,7 @@ Deno.serve(async (request: Request) => {
       if (isUuid(orderId)) {
         const { data: order, error: orderError } = await db
           .from('orders')
-          .select('id')
+          .select('id,order_number,total')
           .eq('id', orderId)
           .maybeSingle();
         if (orderError) throw orderError;
@@ -62,6 +95,11 @@ Deno.serve(async (request: Request) => {
             .update(paymentFields)
             .eq('id', orderId);
           if (updateError) throw updateError;
+          await notifyNewPaidOrder(
+            order.id,
+            String(order.order_number ?? order.id),
+            Number(order.total ?? 0),
+          );
           handled = true;
         }
         // order_id present but the row is gone → fall through to the legacy
@@ -76,7 +114,7 @@ Deno.serve(async (request: Request) => {
       if (!handled) {
         const { data: existing } = await db
           .from('orders')
-          .select('id')
+          .select('id,order_number,total')
           .eq('stripe_session_id', session.id)
           .maybeSingle();
 
@@ -86,6 +124,11 @@ Deno.serve(async (request: Request) => {
             .update(paymentFields)
             .eq('id', existing.id);
           if (updateError) throw updateError;
+          await notifyNewPaidOrder(
+            existing.id,
+            String(existing.order_number ?? existing.id),
+            Number(existing.total ?? 0),
+          );
         } else {
           const cart = JSON.parse(
             session.metadata?.cart ?? '{"items":[],"fulfilment":"pickup"}',
@@ -126,10 +169,16 @@ Deno.serve(async (request: Request) => {
               status: 'New',
               ...paymentFields,
             })
-            .select('id')
+            .select('id,order_number,total')
             .single();
 
           if (error) throw error;
+
+          await notifyNewPaidOrder(
+            created.id,
+            String(created.order_number ?? created.id),
+            Number(created.total ?? 0),
+          );
 
           const itemRows = cart.items.map(
             (item: {

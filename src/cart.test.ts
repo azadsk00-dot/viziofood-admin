@@ -12,6 +12,20 @@ describe('checkout totals',()=>{
     const value=totals(cartWith([item({price:23})]),noCharges);
     expect(value).toEqual({subtotal:23,tax:0,service:0,delivery:0,cardFee:0,total:23});
   });
+  it('production settings: $23, 0% tax, 5% service, 2.5% card, $0 delivery → $24.75',()=>{
+    const value=totals(cartWith([item({price:23})]),charges({deliveryFee:0,taxRate:0,serviceChargeRate:5,cardFeeRate:2.5}));
+    expect(value.subtotal).toBe(23);
+    expect(value.service).toBe(1.15);
+    expect(value.tax).toBe(0);
+    expect(value.delivery).toBe(0);
+    expect(value.cardFee).toBe(0.6); // 2.5% of (23 + 1.15) = 60.375c → 60c
+    expect(value.total).toBe(24.75);
+  });
+  it('10% tax appears ONLY when the database rate is 10 (legacy parity check)',()=>{
+    const value=totals(cartWith([item({price:23})]),charges({deliveryFee:0,taxRate:10,serviceChargeRate:0,cardFeeRate:0}));
+    expect(value.tax).toBe(2.3);
+    expect(value.total).toBe(25.3);
+  });
   it('applies a configurable tax rate instead of a hardcoded 10%',()=>{
     const twenty=totals(cartWith([item({price:23})]),charges({taxRate:50}));
     expect(money(Math.round(twenty.tax*100))).toBe(11.5); // 50% of $23

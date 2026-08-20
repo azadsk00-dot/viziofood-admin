@@ -1,10 +1,13 @@
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
 import type {
+  AdminCategory,
   AuditLogEntry,
   Customer,
   DayHours,
   HomepageContent,
   HomepagePromoType,
+  ModifierGroup,
+  ModifierOption,
   OpeningHours,
   Order,
   OrderItem,
@@ -302,12 +305,120 @@ export async function processRefund(orderId: string, amount?: number, reason?: s
   return payload;
 }
 
-// ── Category / Customer queries ──
+// ── Category queries ──
+// Counts are computed from the products table by category text so they stay
+// correct even where category_id was never populated, and only count what
+// the public menu would show (active, available, unarchived).
 
 export async function getCategories() {
-  const { data, error } = await client().from('categories').select('id,name').order('name');
+  const { data, error } = await client().from('categories').select('id,name,description,active,display_order').order('display_order').order('name');
   if (error) fail(error);
-  return (data ?? []).map(row => ({ id: text(row.id), name: text(row.name), count: 0 }));
+  const { data: productRows, error: productError } = await client().from('products').select('category,active,available,archived_at');
+  if (productError) fail(productError);
+  const counts = new Map<string, number>();
+  for (const row of (productRows ?? []) as Row[]) {
+    if (row.active === false || row.available === false || row.archived_at) continue;
+    const key = text(row.category).toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return ((data ?? []) as Row[]).map(row => ({
+    id: text(row.id), name: text(row.name), description: text(row.description),
+    active: row.active !== false, displayOrder: number(row.display_order),
+    count: counts.get(text(row.name).toLowerCase()) ?? 0,
+  }));
+}
+
+export async function createCategory(name: string, description = '') {
+  const { error } = await client().from('categories').insert({ name: name.trim(), description });
+  if (error) fail(error);
+}
+
+// Renaming a category also relabels its products so the products_sync_category
+// trigger never resurrects the old name as a new category.
+export async function updateCategory(id: string, value: Partial<AdminCategory>) {
+  const c = client();
+  const { error } = await c.from('categories').update({
+    name: value.name?.trim(), description: value.description, active: value.active, display_order: value.displayOrder,
+  }).eq('id', id);
+  if (error) fail(error);
+  if (value.name) {
+    const { data: products, error: syncError } = await c.from('products').select('id').eq('category_id', id).limit(1);
+    if (syncError) fail(syncError);
+    if (products?.length) {
+      const { error: relabelError } = await c.from('products').update({ category: value.name.trim() }).eq('category_id', id);
+      if (relabelError) fail(relabelError);
+    }
+  }
+}
+
+export async function deleteCategory(id: string) {
+  const { error } = await client().from('categories').delete().eq('id', id);
+  if (error) fail(error);
+}
+
+// ── Modifier groups + options (product customisation) ──
+// A product is assigned modifier GROUPS ("Choose Your Protein", "Extras");
+// each group holds the OPTIONS customers pick (Beef, Parmesan…). Tables come
+// from the already-applied 20260822/20260823 migrations — no new migration.
+
+const modifierGroup = (r: Row): ModifierGroup => ({ id: text(r.id), name: text(r.name), required: r.required === true, minSelections: number(r.min_selections), maxSelections: number(r.max_selections), active: r.active !== false, displayOrder: number(r.display_order) });
+const modifierOption = (r: Row): ModifierOption => ({ id: text(r.id), groupId: text(r.group_id), name: text(r.name), description: text(r.description), price: number(r.price), active: r.active !== false, displayOrder: number(r.display_order) });
+
+export async function getModifierGroups() {
+  const { data, error } = await client().from('modifier_groups').select('id,name,required,min_selections,max_selections,active,display_order').order('display_order').order('name');
+  if (error) fail(error);
+  return ((data ?? []) as Row[]).map(modifierGroup);
+}
+export async function createModifierGroup(value: Omit<ModifierGroup, 'id'>) {
+  const { error } = await client().from('modifier_groups').insert({ name: value.name.trim(), required: value.required, min_selections: value.minSelections, max_selections: value.maxSelections, active: value.active, display_order: value.displayOrder });
+  if (error) fail(error);
+}
+export async function updateModifierGroup(id: string, value: Partial<ModifierGroup>) {
+  const { error } = await client().from('modifier_groups').update({ name: value.name?.trim(), required: value.required, min_selections: value.minSelections, max_selections: value.maxSelections, active: value.active, display_order: value.displayOrder }).eq('id', id);
+  if (error) fail(error);
+}
+export async function deleteModifierGroup(id: string) {
+  const { error } = await client().from('modifier_groups').delete().eq('id', id);
+  if (error) fail(error);
+}
+export async function getModifierOptions() {
+  const { data, error } = await client().from('modifiers').select('id,group_id,name,description,price,active,display_order').order('display_order').order('name');
+  if (error) fail(error);
+  return ((data ?? []) as Row[]).map(modifierOption);
+}
+export async function createModifier(value: Omit<ModifierOption, 'id'>) {
+  const { error } = await client().from('modifiers').insert({ group_id: value.groupId, name: value.name.trim(), description: value.description, price: value.price, active: value.active, display_order: value.displayOrder });
+  if (error) fail(error);
+}
+export async function updateModifier(id: string, value: Partial<ModifierOption>) {
+  const { error } = await client().from('modifiers').update({ group_id: value.groupId, name: value.name?.trim(), description: value.description, price: value.price, active: value.active, display_order: value.displayOrder }).eq('id', id);
+  if (error) fail(error);
+}
+export async function deleteModifier(id: string) {
+  const { error } = await client().from('modifiers').delete().eq('id', id);
+  if (error) fail(error);
+}
+
+export async function getProductModifierGroups(productId: string) {
+  const { data, error } = await client().from('product_modifier_groups').select('display_order,modifier_groups(id,name,required,active)').eq('product_id', productId).order('display_order');
+  if (error) fail(error);
+  return ((data ?? []) as Row[]).map(r => {
+    const g = (r.modifier_groups ?? {}) as unknown as Row;
+    return { id: text(g.id), name: text(g.name), required: g.required === true, active: g.active !== false, displayOrder: number(r.display_order) };
+  });
+}
+
+// Full replace: the product's assigned groups become exactly `groupIds`, in
+// order. Nothing is assigned implicitly — an empty list means no modifiers.
+export async function setProductModifierGroups(productId: string, groupIds: string[]) {
+  const c = client();
+  const { error: removeError } = await c.from('product_modifier_groups').delete().eq('product_id', productId);
+  if (removeError) fail(removeError);
+  if (groupIds.length) {
+    const rows = groupIds.map((groupId, index) => ({ product_id: productId, group_id: groupId, display_order: index + 1 }));
+    const { error } = await c.from('product_modifier_groups').insert(rows);
+    if (error) fail(error);
+  }
 }
 
 export async function getCustomers() {

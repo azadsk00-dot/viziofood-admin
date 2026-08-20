@@ -70,6 +70,11 @@ export interface Order {
 
 export interface Customer { id: string; name: string; email: string; orders: number; spend: number; lastOrder: string }
 
+export interface AdminCategory { id: string; name: string; description: string; active: boolean; displayOrder: number; count: number }
+
+export interface ModifierGroup { id: string; name: string; required: boolean; minSelections: number; maxSelections: number; active: boolean; displayOrder: number }
+export interface ModifierOption { id: string; groupId: string; name: string; description: string; price: number; active: boolean; displayOrder: number }
+
 export interface DayHours { open: string; close: string; closed: boolean }
 export interface OpeningHours { [key: string]: DayHours }
 

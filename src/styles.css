@@ -135,3 +135,37 @@ footer a{display:inline-flex;align-items:center;gap:.25rem}footer a:hover{color:
 .branding-preview-nav{height:78px;display:flex;align-items:center;padding:0 1.4rem;background:#fffffff2;border-bottom:1px solid #edf0f3}
 .branding-preview .settings-hint{padding:.7rem 1rem}
 @media(max-width:900px){.featured-admin-grid{grid-template-columns:1fr}.homepage-dates{grid-template-columns:1fr}}
+
+/* ── Admin: modifier groups/options management + product assignment ── */
+.modifier-groups{display:grid;gap:1rem}
+.modifier-group-card{border:1px solid #e5eaf1;border-radius:.7rem;padding:1rem;display:grid;gap:.8rem;background:#fbfcfe}
+.modifier-group-card>header{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.modifier-group-title{display:flex;align-items:center;gap:.6rem;flex:1;min-width:200px;flex-wrap:wrap}
+.modifier-group-title h2{font-size:1.05rem;letter-spacing:-.03em;margin:0}
+.modifier-group-tags{display:flex;gap:.35rem}
+.modifier-options{list-style:none;margin:0;padding:0;display:grid;gap:.4rem}
+.modifier-options li{display:flex;align-items:center;gap:.8rem;padding:.5rem .7rem;border:1px solid #e5eaf1;border-radius:.6rem;background:#fff}
+.modifier-option-name{display:grid;flex:1;min-width:0}
+.modifier-option-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modifier-option-name small{color:#7d8a99}
+.modifier-option-price{white-space:nowrap}
+.modifier-required-tag{color:#875f00!important;font-weight:700}
+.modifier-optional-tag{color:#7d8a99!important;font-weight:600}
+.modifiers-field{display:grid;gap:.55rem}
+.assigned-modifiers{list-style:none;margin:0;padding:0;display:grid;gap:.4rem}
+.assigned-modifiers li{display:flex;align-items:center;gap:.7rem;padding:.5rem .7rem;border:1px solid #e5eaf1;border-radius:.6rem;background:#fbfcfe}
+.assigned-modifiers li>b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assigned-modifiers li>small{color:#536477;font-weight:700}
+.modifier-check{display:flex;align-items:center;gap:.45rem;padding:.45rem .55rem;border-radius:.45rem;background:#f7f9fc;font-size:.85rem;font-weight:600;cursor:pointer}
+.modifier-check input{width:auto!important;margin:0!important}
+.modifier-check small{margin-left:auto;color:#536477;font-weight:700}
+/* ── Public: modifier groups in the product customisation dialog ── */
+.mod-group{margin:0;border:1px solid #e5eaf1;border-radius:.7rem;padding:.9rem;display:grid;gap:.45rem}
+.mod-group legend{padding:0 .35rem;font-size:.86rem;font-weight:800;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.mod-required{color:#a43737;font-style:normal}
+.mod-required-label{font-size:.62rem;text-transform:uppercase;letter-spacing:.09em;color:#875f00;background:#fdf2cf;border-radius:20px;padding:.1rem .45rem}
+.mod-blocked{margin:0;padding:.6rem .75rem;border-radius:.5rem;background:#fde8e8;color:#8c2d2d;font-size:.8rem;font-weight:600}
+/* ── Public: menu loading/empty states ── */
+.menu-skeleton{min-height:280px;background:linear-gradient(100deg,#eef2f6 20%,#fff 40%,#eef2f6 60%);background-size:200% 100%;animation:skeleton 1.3s infinite}
+@keyframes skeleton{to{background-position:-200% 0}}
+.retry{border:0;background:transparent;cursor:pointer;margin-left:.5rem}

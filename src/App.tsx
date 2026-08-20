@@ -20,6 +20,7 @@ import { SettingsPage } from "./admin/Settings";
 import { HomepageContentPage } from "./admin/HomepageContentPage";
 import { FeaturedDishesPage } from "./admin/FeaturedDishesPage";
 import { BrandingPage } from "./admin/BrandingPage";
+import { ModifiersPage } from "./admin/ModifiersPage";
 
 import AdminLogin from "./pages/AdminLogin";
 import { CheckoutCancel, CheckoutSuccess } from "./pages/CheckoutResult";
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="featured" element={<FeaturedDishesPage />} />
             <Route path="homepage" element={<HomepageContentPage />} />
             <Route path="branding" element={<BrandingPage />} />
+            <Route path="modifiers" element={<ModifiersPage />} />
             <Route path="categories" element={<Categories />} />
             <Route path="customers" element={<Customers />} />
             <Route path="reports" element={<Reports />} />

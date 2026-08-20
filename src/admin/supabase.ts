@@ -199,13 +199,15 @@ const settings = (row: Row): RestaurantSettings => ({
   googleMaps: text(row.google_maps),
   logoUrl: nullableText(row.logo_url),
   ordersEnabled: bool(row.orders_enabled),
+  pickupEnabled: row.pickup_enabled !== false,
+  deliveryEnabled: row.delivery_enabled !== false,
   orderPauseMessage: text(row.order_pause_message),
 });
 
 // ── Order queries ──
 
 export async function getOrders(limit?: number) {
-  let query = client().from('orders').select(ORDER_SELECT).order('created_at', { ascending: false });
+  let query = client().from('orders').select(ORDER_SELECT).neq('status', 'Draft').order('created_at', { ascending: false });
   if (limit) query = query.limit(limit);
   const { data: orderRows, error: orderError } = await query;
   if (orderError) fail(orderError);
@@ -447,7 +449,8 @@ export async function getCustomers() {
 
 // ── Settings queries ──
 
-const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,instagram,facebook,google_maps,logo_url,orders_enabled,order_pause_message';
+const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,instagram,facebook,google_maps,logo_url,pickup_enabled,delivery_enabled,orders_enabled,order_pause_message';
+const SETTINGS_SELECT_FALLBACK = SETTINGS_SELECT.replace('pickup_enabled,delivery_enabled,', '');
 // Pre-migration fallback: service_charge / card_processing_fee / logo_url may
 // not exist as columns yet. Both lists stay in sync with the 20260821 migration.
 const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('service_charge,card_processing_fee,', '').replace('logo_url,', '');
@@ -460,7 +463,8 @@ const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('service_charge,card_proc
 export async function getSettings() {
   const read = (columns: string) => client().from('restaurant_settings').select(columns).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
   const primary = await read(SETTINGS_SELECT);
-  const result = primary.error ? await read(SETTINGS_SELECT_LEGACY) : primary;
+  const withToggles = primary.error ? await read(SETTINGS_SELECT_FALLBACK) : primary;
+  const result = withToggles.error ? await read(SETTINGS_SELECT_LEGACY) : withToggles;
   if (result.error) fail(result.error);
   return result.data ? settings(result.data as unknown as Row) : null;
 }
@@ -493,6 +497,8 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
     google_maps: value.googleMaps,
     logo_url: value.logoUrl,
     orders_enabled: value.ordersEnabled,
+    pickup_enabled: value.pickupEnabled,
+    delivery_enabled: value.deliveryEnabled,
     order_pause_message: value.orderPauseMessage,
   });
 

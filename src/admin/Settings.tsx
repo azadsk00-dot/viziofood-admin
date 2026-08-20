@@ -58,6 +58,8 @@ export function SettingsPage() {
   const [cardFeeRate, setCardFeeRate] = useState(0);
   const [openingHours, setOpeningHours] = useState<OpeningHours>(defaultHours);
   const [ordersEnabled, setOrdersEnabled] = useState(true);
+  const [pickupEnabled, setPickupEnabled] = useState(true);
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true);
   const [orderPauseMessage, setOrderPauseMessage] = useState('');
 
   // Sync from loaded data
@@ -71,6 +73,7 @@ export function SettingsPage() {
     setServiceChargeRate(s.serviceChargeRate); setCardFeeRate(s.cardFeeRate);
     setOpeningHours(Object.keys(s.openingHours).length ? s.openingHours : defaultHours());
     setOrdersEnabled(s.ordersEnabled); setOrderPauseMessage(s.orderPauseMessage);
+    setPickupEnabled(s.pickupEnabled); setDeliveryEnabled(s.deliveryEnabled);
   }, [resource.data]);
 
   const updateDay = useCallback((day: string, patch: Partial<DayHours>) => {
@@ -86,6 +89,7 @@ export function SettingsPage() {
         googleMaps, instagram, facebook, deliveryFee, taxRate,
         serviceChargeRate, cardFeeRate,
         openingHours, ordersEnabled, orderPauseMessage,
+        pickupEnabled, deliveryEnabled,
       });
       toast.show('Settings saved.');
     } catch (err) {
@@ -93,7 +97,7 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [name, phone, email, address, suburb, state, postcode, googleMaps, instagram, facebook, deliveryFee, taxRate, serviceChargeRate, cardFeeRate, openingHours, ordersEnabled, orderPauseMessage, toast]);
+  }, [name, phone, email, address, suburb, state, postcode, googleMaps, instagram, facebook, deliveryFee, taxRate, serviceChargeRate, cardFeeRate, openingHours, ordersEnabled, orderPauseMessage, pickupEnabled, deliveryEnabled, toast]);
 
   const toggleOrders = useCallback(async () => {
     const next = !ordersEnabled;
@@ -145,6 +149,27 @@ export function SettingsPage() {
               <XCircle size={14} /> Online ordering is currently paused.
             </p>
           )}
+          <div className="orders-toggle" style={{ marginTop: 12, gap: 8 }}>
+            <button
+              type="button"
+              className={`orders-toggle-button `}
+              onClick={() => setPickupEnabled(v => !v)}
+              disabled={saving}
+            >
+              <span className="orders-toggle-dot" />
+              {pickupEnabled ? 'PICKUP ENABLED' : 'PICKUP OFF'}
+            </button>
+            <button
+              type="button"
+              className={`orders-toggle-button `}
+              onClick={() => setDeliveryEnabled(v => !v)}
+              disabled={saving}
+            >
+              <span className="orders-toggle-dot" />
+              {deliveryEnabled ? 'DELIVERY ENABLED' : 'DELIVERY OFF'}
+            </button>
+            <p className="orders-status-note">Pickup/Delivery toggles apply when you save changes below.</p>
+          </div>
           {!ordersEnabled && (
             <label className="settings-field">
               <span>Pause message (shown to customers)</span>

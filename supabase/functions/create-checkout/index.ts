@@ -66,13 +66,13 @@ Deno.serve(async (request: Request) => {
         .maybeSingle();
 
     let { data: settings, error: settingsError } = await settingsQuery(
-      'orders_enabled, order_pause_message, delivery_fee, tax_rate, service_charge, card_processing_fee',
+      'orders_enabled, order_pause_message, delivery_fee, tax_rate, service_charge, card_processing_fee, pickup_enabled, delivery_enabled',
     );
     if (settingsError?.code === '42703') {
       const legacy = await settingsQuery(
         'orders_enabled, order_pause_message, delivery_fee, tax_rate',
       );
-      settings = { ...legacy.data, service_charge: 0, card_processing_fee: 0 };
+      settings = { ...legacy.data, service_charge: 0, card_processing_fee: 0, pickup_enabled: true, delivery_enabled: true };
       settingsError = legacy.error;
     }
 
@@ -135,6 +135,30 @@ Deno.serve(async (request: Request) => {
       0,
     );
     const isDelivery = cart.fulfilment === 'Delivery';
+
+    // ── Fulfilment method enforcement (server-side) ──
+    // Toggles default to enabled until the migration adds the columns.
+    const pickupEnabled = (settings as Record<string, unknown> | null)?.pickup_enabled !== false;
+    const deliveryEnabled = (settings as Record<string, unknown> | null)?.delivery_enabled !== false;
+    if (!pickupEnabled && !deliveryEnabled) {
+      return Response.json(
+        { error: 'Online ordering is currently unavailable.' },
+        { status: 409, headers: corsHeaders(request) },
+      );
+    }
+    if (isDelivery && !deliveryEnabled) {
+      return Response.json(
+        { error: 'Delivery is currently unavailable. Please choose pickup.' },
+        { status: 409, headers: corsHeaders(request) },
+      );
+    }
+    if (!isDelivery && !pickupEnabled) {
+      return Response.json(
+        { error: 'Pickup is currently unavailable. Please choose delivery.' },
+        { status: 409, headers: corsHeaders(request) },
+      );
+    }
+
     const deliveryCents = isDelivery
       ? Math.round(Number(settings?.delivery_fee ?? 0) * 100)
       : 0;
@@ -154,11 +178,15 @@ Deno.serve(async (request: Request) => {
       0,
     );
 
-    // ── 1. Stage the order (payment_status stays pending until the webhook
-    //      confirms payment). The charge breakdown is persisted here so later
-    //      settings changes never rewrite historical orders. Before the
-    //      20260821 migration, the breakdown columns may not exist — the
-    //      legacy insert stores the total only. ──
+    // ── 1. Stage the order as a NON-OPERATIONAL Draft. Draft orders are
+    //      excluded from every operational surface (admin lists, kitchen,
+    //      alerts, printing); the webhook flips the order to status 'New'
+    //      the moment Stripe confirms payment — that is the only path into
+    //      operations. payment_status stays pending until then. The charge
+    //      breakdown is persisted here so later settings changes never
+    //      rewrite historical orders. Before the 20260821 migration, the
+    //      breakdown columns may not exist — the legacy insert stores the
+    //      total only. ──
     const insertOrder = (breakdown: boolean) =>
       db
         .from('orders')
@@ -177,7 +205,7 @@ Deno.serve(async (request: Request) => {
             : {}),
           total: totalCents / 100,
           items_count: itemsCount,
-          status: 'New',
+          status: 'Draft',
           payment_status: 'pending',
         })
         .select('id')
@@ -221,7 +249,7 @@ Deno.serve(async (request: Request) => {
 
       const { error: historyError } = await db
         .from('order_status_history')
-        .insert({ order_id: order.id, status: 'New' });
+        .insert({ order_id: order.id, status: 'Draft' });
       if (historyError) throw historyError;
 
       const session = await stripe.checkout.sessions.create({

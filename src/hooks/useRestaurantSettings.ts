@@ -20,6 +20,8 @@ export interface PublicRestaurantSettings {
   serviceChargeRate: number;
   cardFeeRate: number;
   ordersEnabled: boolean;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
   orderPauseMessage: string;
 }
 
@@ -46,7 +48,7 @@ export function formatOpeningHours(hours: OpeningHours): string[] {
     });
 }
 
-const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,logo_url,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,orders_enabled,order_pause_message';
+const select = 'name,phone,email,address,suburb,state,postcode,google_maps,instagram,facebook,logo_url,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,pickup_enabled,delivery_enabled,orders_enabled,order_pause_message';
 // Before the 20260821 migration runs, the new columns may not exist yet —
 // selecting them fails the whole query. Fall back to the legacy column list
 // so phone/social/hours keep working; the new charges activate once migrated.
@@ -104,6 +106,8 @@ const mapRow = (row: Record<string, unknown>): PublicRestaurantSettings => ({
   serviceChargeRate: Number(row.service_charge ?? 0),
   cardFeeRate: Number(row.card_processing_fee ?? 0),
   ordersEnabled: row.orders_enabled !== false,
+  pickupEnabled: row.pickup_enabled !== false,
+  deliveryEnabled: row.delivery_enabled !== false,
   orderPauseMessage: typeof row.order_pause_message === 'string' ? row.order_pause_message : '',
 });
 

@@ -90,11 +90,29 @@ Deno.serve(async (request: Request) => {
           .maybeSingle();
         if (orderError) throw orderError;
         if (order) {
-          const { error: updateError } = await db
+          // Payment confirmed → mark paid AND flip Draft→New in the SAME
+          // update, so realtime delivers one atomic paid+operational event
+          // (clients alert on "becomes paid while New"). Orders already
+          // operational keep their admin-advanced status.
+          const { data: flipped } = await db
             .from('orders')
-            .update(paymentFields)
-            .eq('id', orderId);
-          if (updateError) throw updateError;
+            .update({ ...paymentFields, status: 'New' })
+            .eq('id', orderId)
+            .in('status', ['Draft'])
+            .select('id');
+          if (flipped?.length) {
+            // First transition to operational — record it once (replays of
+            // the Stripe event skip this).
+            await db
+              .from('order_status_history')
+              .insert({ order_id: orderId, status: 'New' });
+          } else {
+            const { error: updateError } = await db
+              .from('orders')
+              .update(paymentFields)
+              .eq('id', orderId);
+            if (updateError) throw updateError;
+          }
           await notifyNewPaidOrder(
             order.id,
             String(order.order_number ?? order.id),

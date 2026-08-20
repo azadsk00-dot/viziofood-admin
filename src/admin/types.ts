@@ -99,6 +99,8 @@ export interface RestaurantSettings {
   logoUrl: string | null;
   ordersEnabled: boolean;
   orderPauseMessage: string;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
 }
 
 export type HomepagePromoType = 'daily' | 'weekly';

@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.env.local
+android/
+ios/
+*.jks
+*.keystore
+!debug.keystore
+credentials.json
+eas-credentials/

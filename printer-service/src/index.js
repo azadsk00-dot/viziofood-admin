@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrintAgent } from './agent.js';
+import { startHttpServer } from './http.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(here, '..', '.env');
@@ -36,15 +37,31 @@ const agent = new PrintAgent({
   restaurantName: process.env.VIZIO_RESTAURANT_NAME || 'VIZIO FOOD',
 });
 
+let httpServer = null;
+const startAgent = async () => {
+  await agent.start();
+
+  // Optional LAN HTTP endpoint for the kitchen tablets (health/test-print).
+  // Disabled unless VIZIO_AGENT_HTTP_PORT is set — existing setups unaffected.
+  const httpPort = Number(process.env.VIZIO_AGENT_HTTP_PORT || 0);
+  if (httpPort > 0) {
+    httpServer = await startHttpServer(agent, {
+      port: httpPort,
+      token: process.env.VIZIO_AGENT_HTTP_TOKEN || undefined,
+    });
+  }
+};
+
 const shutdown = async (signal) => {
   console.log(`[vizio-print:info] ${signal} — shutting down`);
+  if (httpServer) httpServer.close();
   await agent.stop();
   process.exit(0);
 };
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-agent.start().catch((error) => {
+startAgent().catch((error) => {
   console.error('[vizio-print:error]', error instanceof Error ? error.message : error);
   process.exit(1);
 });

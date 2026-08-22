@@ -1,0 +1,22 @@
+-- Placeholder for remote-applied migration 20260822 — COMMENTS ONLY, NO SQL.
+--
+-- Context: this version exists in the linked project's migration history
+-- (wxqrapnsowhnmvwmocxc) but its original file was never committed to this
+-- repository and has been lost. This placeholder exists solely so that the
+-- local migrations directory aligns with remote history; the version is
+-- already recorded as applied remotely and this file must never execute.
+--
+-- Effects of the original migration, verified against production by read-only
+-- catalog queries on 2026-08-21 (see also 20260824_modifier_option_uniqueness.sql):
+--   * Created table public.modifiers
+--       (id, name, description, price, active, display_order,
+--        created_at, updated_at, group_id -> public.modifier_groups)
+--       with name declared `text not null unique` (constraint modifiers_name_key).
+--   * Created index modifiers_group_order_idx.
+--   * The global modifiers_name_key constraint was subsequently dropped by
+--     20260824_modifier_option_uniqueness.sql, which added
+--     modifiers_group_name_ci_unique_idx (unique per group, case-insensitive).
+--
+-- NOTE for `supabase db reset`: because the real DDL is not preserved here, a
+-- local reset will NOT recreate public.modifiers and 20260824 will fail.
+-- Reconstructing the DDL from production is a known follow-up task.

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vizio Food — Fresh Italian Pasta</title>
+    <meta name="description" content="Fresh Italian pasta, premium coffee and a warm table in Leederville. Order online for pickup or delivery." />
+    <meta name="theme-color" content="#241a13" />
+
+    <!-- OpenGraph / Twitter -->
+    <meta property="og:type" content="restaurant" />
+    <meta property="og:title" content="Vizio Food — Fresh Italian Pasta" />
+    <meta property="og:description" content="Fresh pasta made daily in Leederville. Order online." />
+    <meta property="og:locale" content="en_AU" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Fonts: Fraunces (display) + Inter (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500..700;1,9..144,500..700&family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Structured data: kept in sync with restaurant settings at runtime -->
+    <script type="application/ld+json" id="restaurant-jsonld">
+      {
+        "@context": "https://schema.org",
+        "@type": "Restaurant",
+        "name": "Vizio Food",
+        "servesCuisine": "Italian",
+        "priceRange": "$$",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "18 Oxford Street",
+          "addressLocality": "Leederville",
+          "addressRegion": "WA",
+          "addressCountry": "AU"
+        },
+        "openingHours": "Mo-Su 07:00-21:00"
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+# Supabase project configuration.
+# The Stripe webhook arrives from Stripe's servers with a stripe-signature
+# header (no Authorization header), so the platform JWT gate must be off for
+# this function. The function itself authenticates every request by verifying
+# the Stripe signature against STRIPE_WEBHOOK_SECRET before executing.
+
+project_id = "wxqrapnsowhnmvwmocxc"
+
+[functions.stripe-webhook]
+verify_jwt = false

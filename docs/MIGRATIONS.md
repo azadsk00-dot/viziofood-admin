@@ -36,6 +36,8 @@ the caveat below.
 | **`20260826120000_platform_rebuild_foundation`** | **the rebuild migration — see below.** Requires 20260826110000 committed first (its kitchen policies compare `profiles.role` against `'kitchen'`) |
 | **`20260826120001_reconstruct_remote_applied`** | re-creates the lost Aug-22/23 objects (modifiers table final form, categories.display_order/active, products.spice_level/featured_order) — no-op on the live DB |
 | **`20260826120002_order_state_machine`** | DB trigger: forward-only status transitions, terminal states frozen, kitchen accounts restricted to status-only updates |
+| **`20260826120003_coupon_staff_write`** | `staff_manage_coupons` policy — coupons had SELECT-only policies, so every admin save failed with 42501 |
+| **`20260826120004_coupon_model_check`** | replaces the legacy `percentage_off/amount_off NOT NULL` table check (23514 on every new-model coupon) with the stricter named `coupons_model_check`; auto-repairs legacy rows |
 
 > **Timestamp note:** the rebuild migration was briefly checked in as
 > `202609010001_platform_rebuild_foundation.sql` — a future-dated stamp used

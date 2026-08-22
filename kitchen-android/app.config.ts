@@ -8,8 +8,9 @@ const supabaseFunctionsUrl = process.env.EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL ?? `
 const config: ExpoConfig = {
   name: 'Vizio Kitchen',
   slug: 'vizio-kitchen',
-  version: '1.0.0',
-  orientation: 'landscape',
+  version: '1.1.0',
+  // Full management app: both orientations must work and reflow.
+  orientation: 'default',
   scheme: 'viziokitchen',
   userInterfaceStyle: 'dark',
   backgroundColor: '#0B0E13',
@@ -23,6 +24,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.viziofood.kitchen',
+    versionCode: 2,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0B0E13',

@@ -13,7 +13,7 @@ import { syncService } from './services/syncService';
 import { startHeartbeat, stopHeartbeat, disableDevice } from './services/heartbeat';
 import { ensureChannels, onNotificationResponse, registerForPush, registerListeners, unregisterPush } from './services/notifications';
 import { recordIncident } from './services/incidents';
-import { navigationRef, navigateToOrder, RootNavigator } from './navigation/RootNavigator';
+import RootNavigator, { navigationRef, navigateToOrder } from './navigation/RootNavigator';
 import AlertOverlay from './components/AlertOverlay';
 
 const KEEP_AWAKE_TAG = 'vizio-kitchen';

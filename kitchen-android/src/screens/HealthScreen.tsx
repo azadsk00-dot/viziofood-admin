@@ -4,6 +4,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import * as Battery from 'expo-battery';
+import * as FileSystem from 'expo-file-system';
 import { useOrdersStore } from '../state/ordersStore';
 import { usePrintStore, printerQueueDepth } from '../state/printStore';
 import { useSettingsStore } from '../state/settingsStore';
@@ -33,11 +36,36 @@ export default function HealthScreen(): React.ReactElement {
   const [deviceInfo, setDeviceInfo] = useState({ id: '', name: '', version: '' });
   const [supabaseOk, setSupabaseOk] = useState<RowState>('unknown');
   const [busy, setBusy] = useState(false);
+  const [battery, setBattery] = useState<{ level: string; charging: string }>({ level: '—', charging: '—' });
+  const [storage, setStorage] = useState('—');
+  const [wifi, setWifi] = useState('—');
 
   useEffect(() => {
     void (async () => {
       setNotifications((await notificationStatus()) === 'enabled' ? 'ok' : 'bad');
       setDeviceInfo({ id: (await getDeviceId()).slice(0, 8), name: await getDeviceName(), version: appVersion() });
+      // Battery / charging / storage / Wi-Fi signal (where Android permits).
+      try {
+        const [level, state] = await Promise.all([Battery.getBatteryLevelAsync(), Battery.getBatteryStateAsync()]);
+        const charging =
+          state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL;
+        setBattery({ level: `${Math.round(level * 100)}%`, charging: charging ? 'CHARGING' : 'ON BATTERY' });
+      } catch {
+        setBattery({ level: 'unavailable', charging: 'unavailable' });
+      }
+      try {
+        const free = await FileSystem.getFreeDiskStorageAsync();
+        setStorage(`${(free / 1024 / 1024 / 1024).toFixed(1)} GB free`);
+      } catch {
+        setStorage('unavailable');
+      }
+      try {
+        const net = await NetInfo.fetch();
+        const strength = (net.details as { strength?: number } | undefined)?.strength;
+        setWifi(net.type === 'wifi' ? (strength !== undefined ? `Wi-Fi ${Math.round((strength / 100) * 100)}%` : 'Wi-Fi') : net.type ?? '—');
+      } catch {
+        setWifi('unavailable');
+      }
     })();
   }, []);
 
@@ -76,6 +104,9 @@ export default function HealthScreen(): React.ReactElement {
     { label: 'App version', value: deviceInfo.version || '—', state: 'ok' },
     { label: 'Device', value: `${deviceInfo.name} (${deviceInfo.id})`, state: 'ok' },
     { label: 'Printer agent', value: agent.online ? 'ONLINE' : 'NOT REACHABLE', state: agent.online ? 'ok' : 'warn' },
+    { label: 'Battery', value: `${battery.level} · ${battery.charging}`, state: 'ok' },
+    { label: 'Storage', value: storage, state: 'ok' },
+    { label: 'Wi-Fi', value: wifi, state: 'ok' },
   ];
 
   const color = (state: RowState) => (state === 'ok' ? theme.success : state === 'warn' ? theme.warning : state === 'bad' ? theme.danger : theme.textDim);

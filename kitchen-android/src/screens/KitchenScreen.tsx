@@ -15,7 +15,8 @@ import { ConnectionBanner, PrinterChip } from '../components/ConnectionBanner';
 import { BigButton, useTheme } from '../components/ui';
 import type { KitchenOrder } from '../lib/types';
 import { FILTER_LABELS, OrderFilter, advanceTarget, filterOrders, isUnacknowledged, sortOrders } from '../lib/orderLogic';
-import { navigateToOrder, navigateToTab } from '../navigation/RootNavigator';
+import { navigateToOrder } from '../navigation/RootNavigator';
+import { navigateToSection } from '../navigation/sectionNav';
 
 const FILTER_TABS: OrderFilter[] = [
   'live', 'new', 'accepted', 'preparing', 'ready', 'completed',
@@ -29,7 +30,7 @@ function rushLevel(activeCount: number, unackedCount: number): 'none' | 'busy' |
   return 'none';
 }
 
-export default function DashboardScreen(): React.ReactElement {
+export default function KitchenScreen(): React.ReactElement {
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const orders = useOrdersStore((s) => s.orders);
@@ -118,7 +119,7 @@ export default function DashboardScreen(): React.ReactElement {
           style={[styles.search, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
         />
 
-        <PrinterChip onPress={() => navigateToTab('PrintQueue')} />
+        <PrinterChip onPress={() => navigateToSection('printQueue')} />
       </View>
 
       <View style={[styles.tabsRow, { borderBottomColor: theme.border }]}>

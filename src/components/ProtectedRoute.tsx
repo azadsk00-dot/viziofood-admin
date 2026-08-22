@@ -43,4 +43,6 @@ export function ProtectedRoute({ roles, children }: { roles: UserRole[]; childre
 }
 
 export const AdminRoute = ({ children }: { children: ReactNode }) => <ProtectedRoute roles={['admin']}>{children}</ProtectedRoute>;
-export const StaffRoute = ({ children }: { children: ReactNode }) => <ProtectedRoute roles={['admin', 'staff']}>{children}</ProtectedRoute>;
+// Kitchen display + printer agents run with the 'kitchen' role — the DB
+// grants them order reads and status-only updates (20260826110000 + 120000).
+export const StaffRoute = ({ children }: { children: ReactNode }) => <ProtectedRoute roles={['admin', 'staff', 'kitchen']}>{children}</ProtectedRoute>;

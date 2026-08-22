@@ -20,6 +20,13 @@
 -- authoritative payment/refund writes.
 --
 -- Idempotent: safe to re-run. Runs AFTER 20260826120000 (its columns exist).
+--
+-- Enum note: this file's only 'kitchen' reference compares a TEXT variable
+-- (`actor_role`) with a string literal — it never instantiates the
+-- user_role enum, so PostgreSQL 55P04 cannot occur here even though the
+-- trigger function is created in the same transaction as nothing enum-
+-- related. The kitchen ROLE itself is added by 20260826110000, which file
+-- ordering places before this migration.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Rank helper (New→1 … Completed→5; terminal/unknown = 99).

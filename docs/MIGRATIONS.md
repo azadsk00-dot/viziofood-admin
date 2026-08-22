@@ -32,7 +32,8 @@ the caveat below.
 | `20260822/23 remote_applied` | **comment-only placeholders** — reconstructed below |
 | `20260824_modifier_option_uniqueness` | per-group modifier name uniqueness (fresh-DB guarded) |
 | `20260825_fulfilment_toggles` | pickup_enabled / delivery_enabled |
-| **`20260826120000_platform_rebuild_foundation`** | **the rebuild migration — see below** |
+| **`20260826110000_add_kitchen_role`** | adds the `kitchen` enum value — **standalone by design**: PostgreSQL (55P04) forbids using a new enum value until its transaction commits, so this must be applied and committed before any file whose policies reference `'kitchen'` |
+| **`20260826120000_platform_rebuild_foundation`** | **the rebuild migration — see below.** Requires 20260826110000 committed first (its kitchen policies compare `profiles.role` against `'kitchen'`) |
 | **`20260826120001_reconstruct_remote_applied`** | re-creates the lost Aug-22/23 objects (modifiers table final form, categories.display_order/active, products.spice_level/featured_order) — no-op on the live DB |
 | **`20260826120002_order_state_machine`** | DB trigger: forward-only status transitions, terminal states frozen, kitchen accounts restricted to status-only updates |
 

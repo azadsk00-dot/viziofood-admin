@@ -10,7 +10,13 @@
 -- Adds: specials (Special of the Day), printers, print_jobs, coupon
 -- extensions, order fulfilment/charge-breakdown columns, settings
 -- extensions (min order, special hours, kitchen prefs, favicon), audit log
--- entity columns, and the 'kitchen' role.
+-- entity columns, and kitchen-role RLS policies.
+--
+-- PREREQUISITE: 20260826110000_add_kitchen_role.sql must be applied and
+-- COMMITTED before this file (PostgreSQL 55P04: a new enum value cannot be
+-- used until its transaction commits — the policies below compare
+-- profiles.role against 'kitchen'). When applying via the Supabase SQL
+-- Editor, run each migration file as a separate "Run".
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ─── Helper: add a column only when missing ────────────────────────────────
@@ -29,15 +35,12 @@ begin
 end;
 $$;
 
--- ─── Roles: add 'kitchen' (kitchen display + printer agents) ───────────────
-do $$
-begin
-  if exists (select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
-             where t.typname = 'user_role' and n.nspname = 'public') then
-    execute 'alter type public.user_role add value if not exists ''kitchen''';
-  end if;
-end;
-$$;
+-- ─── Roles ─────────────────────────────────────────────────────────────────
+-- The 'kitchen' enum value is added by 20260826110000_add_kitchen_role.sql,
+-- which MUST be applied (and committed) before this file: PostgreSQL error
+-- 55P04 forbids using a new enum value in the same transaction that added
+-- it, and this file's policies compare profiles.role against 'kitchen'.
+-- With 20260826110000 committed first, every reference below is safe.
 
 -- Kitchen staff may read orders + order items (same policy shape as staff).
 do $$

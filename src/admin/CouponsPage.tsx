@@ -52,7 +52,14 @@ function CouponEditor({ coupon, onClose, onSaved }: { coupon: Coupon; onClose: (
       onSaved();
       onClose();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not save the coupon.');
+      // supabase-js throws PostgrestError as a PLAIN OBJECT (not an Error),
+      // so reason.message never hits the Error branch — surface message+code.
+      const detail = reason instanceof Error
+        ? reason.message
+        : `${(reason as { message?: string })?.message ?? 'Could not save the coupon.'}${
+            (reason as { code?: string })?.code ? ` (${(reason as { code: string }).code})` : ''
+          }`;
+      setError(detail);
     } finally {
       setBusy(false);
     }

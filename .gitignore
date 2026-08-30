@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+coverage/
 
 # Vite
 .vite/
@@ -10,10 +11,14 @@ dist/
 # TypeScript
 *.tsbuildinfo
 
-# Environment variables
+# Environment variables — never commit real values
+# (.env.example with placeholders IS committed)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Local pre-rebuild safety snapshot (kept locally, not for version control)
+baseline-backup/
 
 # Logs
 npm-debug.log*

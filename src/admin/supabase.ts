@@ -24,7 +24,20 @@ type Row = Record<string, unknown>;
 const PRODUCT_BUCKET = 'product-images';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const client = () => { if (!supabase) throw new Error(supabaseConfigurationError); return supabase; };
-const fail = (error: unknown): never => { console.error(error); throw error; };
+// PostgREST errors are plain objects, not Error instances — every caller that
+// does `error instanceof Error ? error.message : <generic fallback>` would
+// otherwise mask the real cause behind messages like "Product update failed."
+const describeError = (error: unknown): string => {
+  const message = typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message
+    : error instanceof Error ? error.message : '';
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : '';
+  if (code === 'PGRST301' || code === '401' || /jwt|api key/i.test(message)) {
+    return 'Your session has expired — please sign in again.';
+  }
+  return message ? `${message}${code ? ` (${code})` : ''}` : 'Unexpected error.';
+};
+const fail = (error: unknown): never => { console.error(error); throw new Error(describeError(error)); };
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 const nullableText = (value: unknown) => typeof value === 'string' ? value : null;
 const number = (value: unknown) => Number(value ?? 0);
@@ -33,13 +46,13 @@ const strings = (value: unknown): string[] => Array.isArray(value) ? value.filte
 const visibility = (value: unknown): ProductVisibility => value === 'hidden' || value === 'private' ? value : 'public';
 const bool = (value: unknown) => value === true;
 
-export const productColumns = 'id,name,description,price,category,active,available,featured,popular,archived,archived_at,vegetarian,vegan,halal,gluten_free,preparation_time,calories,ingredients,allergens,tags,display_order,sku,internal_notes,image_url,thumbnail_url,gallery,gallery_images,visibility,created_by,updated_by';
+export const productColumns = 'id,name,description,price,category,is_combo,active,available,featured,popular,archived,archived_at,vegetarian,vegan,halal,gluten_free,preparation_time,calories,ingredients,allergens,tags,display_order,sku,internal_notes,image_url,thumbnail_url,gallery,gallery_images,visibility,created_by,updated_by';
 // featured_order arrives via getProducts only; before the 20260820 migration
 // runs the column may not exist, so reads fall back to the base column list.
 const productColumnsWithFeatured = productColumns.replace('display_order,', 'display_order,featured_order,');
 
 const product = (row: Row): Product => ({
-  id: text(row.id), name: text(row.name), description: text(row.description), price: number(row.price), category: text(row.category), sku: text(row.sku),
+  id: text(row.id), name: text(row.name), description: text(row.description), price: number(row.price), category: text(row.category), sku: text(row.sku), isCombo: bool(row.is_combo),
   active: Boolean(row.active), available: Boolean(row.available), featured: Boolean(row.featured), popular: Boolean(row.popular), archived: Boolean(row.archived ?? row.archived_at), archivedAt: nullableText(row.archived_at),
   vegetarian: Boolean(row.vegetarian), vegan: Boolean(row.vegan), halal: Boolean(row.halal), glutenFree: Boolean(row.gluten_free), preparationTime: number(row.preparation_time), calories: nullableNumber(row.calories),
   ingredients: strings(row.ingredients), allergens: strings(row.allergens), tags: strings(row.tags), displayOrder: number(row.display_order), featuredOrder: row.featured_order === undefined ? undefined : number(row.featured_order), imageUrl: nullableText(row.image_url), thumbnailUrl: nullableText(row.thumbnail_url),
@@ -48,7 +61,7 @@ const product = (row: Row): Product => ({
 
 const defined = <T extends object>(value: T): Partial<T> => Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as Partial<T>;
 const toProductRow = (value: Partial<ProductDraft>) => defined({
-  name: value.name?.trim(), description: value.description?.trim(), price: value.price, category: value.category?.trim(), sku: value.sku?.trim() || null,
+  name: value.name?.trim(), description: value.description?.trim(), price: value.price, category: value.category?.trim(), sku: value.sku?.trim() || null, is_combo: value.isCombo,
   active: value.active, available: value.available, featured: value.featured, popular: value.popular, archived: value.archived, archived_at: value.archivedAt,
   vegetarian: value.vegetarian, vegan: value.vegan, halal: value.halal, gluten_free: value.glutenFree, preparation_time: value.preparationTime, calories: value.calories,
   ingredients: value.ingredients, allergens: value.allergens, tags: value.tags, display_order: value.displayOrder, featured_order: value.featuredOrder, image_url: value.imageUrl, thumbnail_url: value.thumbnailUrl,
@@ -199,13 +212,24 @@ const settings = (row: Row): RestaurantSettings => ({
   googleMaps: text(row.google_maps),
   logoUrl: nullableText(row.logo_url),
   ordersEnabled: bool(row.orders_enabled),
+  pickupEnabled: row.pickup_enabled !== false,
+  deliveryEnabled: row.delivery_enabled !== false,
   orderPauseMessage: text(row.order_pause_message),
+  // Extended fields (20260826 migration). The typed settings interface keeps
+  // them optional so pre-migration databases still map cleanly.
+  ...(row.minimum_order !== undefined ? { minimumOrder: number(row.minimum_order) } : {}),
+  ...(row.delivery_minimum_order !== undefined ? { deliveryMinimumOrder: number(row.delivery_minimum_order) } : {}),
+  ...(row.pickup_time !== undefined ? { pickupTime: number(row.pickup_time) } : {}),
+  ...(row.delivery_time !== undefined ? { deliveryTime: number(row.delivery_time) } : {}),
+  ...(row.pickup_instructions !== undefined ? { pickupInstructions: text(row.pickup_instructions) } : {}),
+  ...(row.order_sound_enabled !== undefined ? { orderSoundEnabled: bool(row.order_sound_enabled) } : {}),
+  ...(row.auto_print_enabled !== undefined ? { autoPrintEnabled: bool(row.auto_print_enabled) } : {}),
 });
 
 // ── Order queries ──
 
 export async function getOrders(limit?: number) {
-  let query = client().from('orders').select(ORDER_SELECT).order('created_at', { ascending: false });
+  let query = client().from('orders').select(ORDER_SELECT).neq('status', 'Draft').order('created_at', { ascending: false });
   if (limit) query = query.limit(limit);
   const { data: orderRows, error: orderError } = await query;
   if (orderError) fail(orderError);
@@ -280,8 +304,12 @@ export async function processRefund(orderId: string, amount?: number, reason?: s
   const { data: { session } } = await supabase!.auth.getSession();
   if (!session?.access_token) throw new Error('Authentication required for refund.');
 
-  const endpoint = import.meta.env.VITE_REFUND_ENDPOINT;
-  if (!endpoint) throw new Error('Refund endpoint is not configured. Set VITE_REFUND_ENDPOINT.');
+  // Explicit endpoint wins; otherwise derive it from the project URL — the
+  // process-refund Edge Function lives at the standard functions path. A
+  // missing build-time VITE_REFUND_ENDPOINT must never block refunds.
+  const endpoint = import.meta.env.VITE_REFUND_ENDPOINT
+    ?? (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-refund` : undefined);
+  if (!endpoint) throw new Error('Refund endpoint is not configured. Set VITE_SUPABASE_URL or VITE_REFUND_ENDPOINT.');
 
   const body: Record<string, unknown> = { orderId };
   if (amount != null) body.amount = amount;
@@ -362,7 +390,7 @@ export async function deleteCategory(id: string) {
 // from the already-applied 20260822/20260823 migrations — no new migration.
 
 const modifierGroup = (r: Row): ModifierGroup => ({ id: text(r.id), name: text(r.name), required: r.required === true, minSelections: number(r.min_selections), maxSelections: number(r.max_selections), active: r.active !== false, displayOrder: number(r.display_order) });
-const modifierOption = (r: Row): ModifierOption => ({ id: text(r.id), groupId: text(r.group_id), name: text(r.name), description: text(r.description), price: number(r.price), active: r.active !== false, displayOrder: number(r.display_order) });
+const modifierOption = (r: Row): ModifierOption => ({ id: text(r.id), groupId: text(r.group_id), name: text(r.name), description: text(r.description), price: number(r.price), pricingMode: r.pricing_mode === 'override' ? 'override' : 'adjustment', active: r.active !== false, displayOrder: number(r.display_order) });
 
 export async function getModifierGroups() {
   const { data, error } = await client().from('modifier_groups').select('id,name,required,min_selections,max_selections,active,display_order').order('display_order').order('name');
@@ -382,16 +410,16 @@ export async function deleteModifierGroup(id: string) {
   if (error) fail(error);
 }
 export async function getModifierOptions() {
-  const { data, error } = await client().from('modifiers').select('id,group_id,name,description,price,active,display_order').order('display_order').order('name');
+  const { data, error } = await client().from('modifiers').select('id,group_id,name,description,price,pricing_mode,active,display_order').order('display_order').order('name');
   if (error) fail(error);
   return ((data ?? []) as Row[]).map(modifierOption);
 }
 export async function createModifier(value: Omit<ModifierOption, 'id'>) {
-  const { error } = await client().from('modifiers').insert({ group_id: value.groupId, name: value.name.trim(), description: value.description, price: value.price, active: value.active, display_order: value.displayOrder });
+  const { error } = await client().from('modifiers').insert({ group_id: value.groupId, name: value.name.trim(), description: value.description, price: value.price, pricing_mode: value.pricingMode ?? 'adjustment', active: value.active, display_order: value.displayOrder });
   if (error) fail(error);
 }
 export async function updateModifier(id: string, value: Partial<ModifierOption>) {
-  const { error } = await client().from('modifiers').update({ group_id: value.groupId, name: value.name?.trim(), description: value.description, price: value.price, active: value.active, display_order: value.displayOrder }).eq('id', id);
+  const { error } = await client().from('modifiers').update({ group_id: value.groupId, name: value.name?.trim(), description: value.description, price: value.price, pricing_mode: value.pricingMode ?? 'adjustment', active: value.active, display_order: value.displayOrder }).eq('id', id);
   if (error) fail(error);
 }
 export async function deleteModifier(id: string) {
@@ -421,6 +449,57 @@ export async function setProductModifierGroups(productId: string, groupIds: stri
   }
 }
 
+// ── Combo (bundle) management — combo_groups + combo_options ──
+// Eligible choices are individually selected products, never categories.
+// Option price 0 = included in the bundle price; >0 = a one-off upgrade
+// added to the combo total. The child's standalone price is never charged.
+
+export interface AdminComboGroup { id: string; name: string; displayOrder: number; minSelections: number; maxSelections: number; inheritExtras: boolean; active: boolean; options: { productId: string; name: string; price: number }[] }
+
+export async function getComboGroups(productId: string): Promise<AdminComboGroup[]> {
+  const c = client();
+  const [groupsResult, optionsResult] = await Promise.all([
+    c.from('combo_groups').select('id,name,display_order,min_selections,max_selections,inherit_extras,active').eq('product_id', productId).order('display_order'),
+    c.from('combo_options').select('group_id,product_id,price,display_order,products!inner(id,name)').order('display_order'),
+  ]);
+  if (groupsResult.error) fail(groupsResult.error);
+  if (optionsResult.error) fail(optionsResult.error);
+  const byGroup = new Map<string, { productId: string; name: string; price: number }[]>();
+  for (const row of optionsResult.data ?? []) {
+    const product = (row.products ?? null) as unknown as { id: string; name: string } | null;
+    if (!row.group_id || !product?.id) continue;
+    const list = byGroup.get(text(row.group_id)) ?? [];
+    list.push({ productId: text(product.id), name: text(product.name), price: number(row.price) });
+    byGroup.set(text(row.group_id), list);
+  }
+  return (groupsResult.data ?? []).map(row => ({
+    id: text(row.id), name: text(row.name), displayOrder: number(row.display_order), minSelections: number(row.min_selections), maxSelections: number(row.max_selections),
+    inheritExtras: row.inherit_extras === true, active: row.active !== false, options: byGroup.get(text(row.id)) ?? [],
+  }));
+}
+
+// Full replace of a combo's choice groups + options (delete then insert in
+// order) — the editor's save model, mirroring setProductModifierGroups.
+export async function saveComboGroups(productId: string, groups: Omit<AdminComboGroup, 'id'>[]): Promise<void> {
+  const c = client();
+  const { error: clearError } = await c.from('combo_groups').delete().eq('product_id', productId);
+  if (clearError) fail(clearError);
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    const { data: created, error } = await c.from('combo_groups')
+      .insert({ product_id: productId, name: group.name.trim(), display_order: index, min_selections: group.minSelections, max_selections: group.maxSelections, inherit_extras: group.inheritExtras, active: true })
+      .select('id').single();
+    if (error) fail(error);
+    const groupId = text((created as Row).id);
+    if (group.options.length) {
+      const { error: optionError } = await c.from('combo_options')
+        .insert(group.options.map((option, optionIndex) => ({ group_id: groupId, product_id: option.productId, price: option.price, display_order: optionIndex })));
+      if (optionError) fail(optionError);
+    }
+  }
+}
+
+
 export async function getCustomers() {
   const { data, error } = await client().from('orders').select('customer_name,customer_email,customer_phone,total,created_at').order('created_at', { ascending: false });
   if (error) fail(error);
@@ -447,28 +526,44 @@ export async function getCustomers() {
 
 // ── Settings queries ──
 
-const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,instagram,facebook,google_maps,logo_url,orders_enabled,order_pause_message';
-// Pre-migration fallback: service_charge / card_processing_fee / logo_url may
-// not exist as columns yet. Both lists stay in sync with the 20260821 migration.
-const SETTINGS_SELECT_LEGACY = SETTINGS_SELECT.replace('service_charge,card_processing_fee,', '').replace('logo_url,', '');
+const SETTINGS_SELECT = 'id,name,address,suburb,state,postcode,phone,email,hours,opening_hours,delivery_fee,tax_rate,service_charge,card_processing_fee,instagram,facebook,google_maps,logo_url,pickup_enabled,delivery_enabled,orders_enabled,order_pause_message,minimum_order,delivery_minimum_order,pickup_time,delivery_time,pickup_instructions,order_sound_enabled,auto_print_enabled';
 
 // The table is expected to hold a single row. While duplicates exist, every
 // read and write must resolve to the same one: the oldest row (created_at,
 // then id as a stable tiebreak) — the row a bare LIMIT 1 already returns and
 // the public site displays. Keep this ordering identical everywhere.
+//
+// Pre-migration resilience: the select falls back dynamically — each missing
+// column reported by PostgREST (42703 / PGRST204) is stripped and the read
+// retried, so settings keep loading on databases that haven't yet run the
+// 20260821 / 20260825 / 20260826 migrations.
+const missingColumnFrom = (error: { code?: string; message?: string } | null): string | null => {
+  if (!error || (error.code !== '42703' && error.code !== 'PGRST204')) return null;
+  const match = /column (?:public\.)?restaurant_settings\.([a-z_]+) does not exist/i.exec(error.message ?? '');
+  return match?.[1] ?? null;
+};
 
 export async function getSettings() {
   const read = (columns: string) => client().from('restaurant_settings').select(columns).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
-  const primary = await read(SETTINGS_SELECT);
-  const result = primary.error ? await read(SETTINGS_SELECT_LEGACY) : primary;
-  if (result.error) fail(result.error);
-  return result.data ? settings(result.data as unknown as Row) : null;
+
+  let columns = SETTINGS_SELECT;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await read(columns);
+    if (!result.error) {
+      return result.data ? settings(result.data as unknown as Row) : null;
+    }
+    const missing = missingColumnFrom(result.error);
+    if (!missing || !columns.includes(missing)) fail(result.error);
+    columns = columns.split(',').filter((column) => column.trim() !== missing).join(',');
+    if (!columns.includes('id')) fail(result.error);
+  }
+  fail(new Error('restaurant_settings columns could not be resolved.'));
 }
 
 // Columns added by the 20260821 migration. Splitting them out lets the save
 // fall back to the legacy column set when the migration hasn't been applied,
 // so settings/branding saves keep working instead of failing wholesale.
-const NEW_SETTING_COLUMNS = ['logo_url', 'service_charge', 'card_processing_fee'] as const;
+const NEW_SETTING_COLUMNS = ['logo_url', 'service_charge', 'card_processing_fee', 'minimum_order', 'delivery_minimum_order', 'pickup_time', 'delivery_time', 'pickup_instructions', 'order_sound_enabled', 'auto_print_enabled'] as const;
 
 const isMissingColumn = (error: { code?: string; message?: string } | null | undefined) =>
   error?.code === '42703' || error?.code === 'PGRST204';
@@ -493,7 +588,16 @@ export async function saveSettings(value: Partial<RestaurantSettings>) {
     google_maps: value.googleMaps,
     logo_url: value.logoUrl,
     orders_enabled: value.ordersEnabled,
+    pickup_enabled: value.pickupEnabled,
+    delivery_enabled: value.deliveryEnabled,
     order_pause_message: value.orderPauseMessage,
+    minimum_order: value.minimumOrder,
+    delivery_minimum_order: value.deliveryMinimumOrder,
+    pickup_time: value.pickupTime,
+    delivery_time: value.deliveryTime,
+    pickup_instructions: value.pickupInstructions,
+    order_sound_enabled: value.orderSoundEnabled,
+    auto_print_enabled: value.autoPrintEnabled,
   });
 
   // Pre-migration: the new columns may not exist. Retry without them and, if

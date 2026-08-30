@@ -1,0 +1,14 @@
+{
+  "name": "vizio-printer-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local print agent for Vizio Food — pulls print_jobs from Supabase and prints kitchen tickets on network thermal printers (ESC/POS over raw TCP).",
+  "scripts": {
+    "start": "node src/index.js",
+    "test-print": "node src/test-print.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.6"
+  }
+}

@@ -1,2 +1,110 @@
-import { motion } from 'framer-motion'; import { Leaf, Utensils, Users, MapPin, Phone, Clock, ExternalLink } from 'lucide-react'; import hero from '../assets/hero-pasta.png'; import { useRestaurantSettings, formatOpeningHours } from '../hooks/useRestaurantSettings';
-export default function About(){const {settings}=useRestaurantSettings();const addressLine=settings?[settings.address,settings.suburb,settings.state,settings.postcode].filter(Boolean).join(', '):'';const hours=settings?formatOpeningHours(settings.openingHours):[];return <main><section className="about-hero"><div><p className="eyebrow">Our story</p><h1>A table for<br/><em>everybody.</em></h1><p>Vizio began with a tiny pasta machine, a big idea, and a belief that great food should feel generous.</p></div><img src={hero} alt="Fresh pasta plated at Vizio Food"/></section><section className="section story"><p className="eyebrow">A decade in the making</p><h2>Italian comfort,<br/>with a Western Australian soul.</h2><p>We make pasta the old way: with good flour, free-range eggs and plenty of patience. Our recipes travel from the villages of Italy to our sunny little corner of {settings?.suburb||'Leederville'}, with room for the local seasons to speak.</p></section><section className="timeline"><div><b>2014</b><p>Vizio opens with six tables and one hand-cranked pasta machine.</p></div><div><b>2019</b><p>Our coffee bar arrives, making mornings our new favourite ritual.</p></div><div><b>Today</b><p>A daily, joyful meeting place for our beautiful neighbourhood.</p></div></section><section className="stats"><article><b>12</b><p>Years at the table</p></article><article><b>100%</b><p>Fresh pasta, daily</p></article><article><b>42k</b><p>Happy customers</p></article></section><section className="values"><article><Leaf/><h3>Real ingredients</h3><p>We know our producers and let each ingredient shine.</p></article><article><Utensils/><h3>Italian technique</h3><p>Classic methods, faithfully practised every day.</p></article><article><Users/><h3>Open table</h3><p>Good food tastes best when it is shared.</p></article></section>{settings&&(addressLine||settings.phone||hours.length>0)&&<section className="section visit"><p className="eyebrow">Visit us</p><h2>Find your way<br/>to the table.</h2>{addressLine&&<p className="visit-line">{settings.googleMapsUrl?<a href={settings.googleMapsUrl} target="_blank" rel="noreferrer"><MapPin size={16}/>{addressLine}<ExternalLink size={12}/></a>:<span><MapPin size={16}/>{addressLine}</span>}</p>}{settings.phone&&<p className="visit-line"><a href={`tel:${settings.phone}`}><Phone size={16}/>{settings.phone}</a></p>}{hours.map(line=><p className="visit-line" key={line}><Clock size={16}/>{line}</p>)}</section>}</main>}
+/**
+ * Our Story — static brand narrative with settings-driven visit block.
+ */
+
+import { Leaf, Utensils, Users, MapPin, Phone, Clock } from 'lucide-react';
+import hero from '../assets/hero-pasta.webp';
+import { useRestaurantSettings, formatOpeningHours } from '../hooks/useRestaurantSettings';
+import { Card } from '../ui';
+
+const timeline = [
+  { year: '2014', body: 'Vizio opens with six tables and one hand-cranked pasta machine.' },
+  { year: '2019', body: 'Our coffee bar arrives, making mornings our new favourite ritual.' },
+  { year: 'Today', body: 'A daily, joyful meeting place for our beautiful neighbourhood.' },
+];
+
+const values = [
+  { icon: Leaf, title: 'Real ingredients', body: 'We know our producers and let each ingredient shine.' },
+  { icon: Utensils, title: 'Italian technique', body: 'Classic methods, faithfully practised every day.' },
+  { icon: Users, title: 'Open table', body: 'Good food tastes best when it is shared.' },
+];
+
+export default function About() {
+  const { settings } = useRestaurantSettings();
+  const addressLine = settings ? [settings.address, settings.suburb, settings.state, settings.postcode].filter(Boolean).join(', ') : '';
+  const hours = settings ? formatOpeningHours(settings.openingHours) : [];
+
+  return (
+    <>
+      <section className="hero">
+        <div className="vz-container hero__grid">
+          <div>
+            <p className="vz-eyebrow">Our story</p>
+            <h1>
+              A table for <em>everybody.</em>
+            </h1>
+            <p className="hero__lead">
+              Vizio began with a tiny pasta machine, a big idea, and a belief that great food should feel generous.
+            </p>
+          </div>
+          <div className="hero__image">
+            <img src={hero} alt="Fresh pasta plated at Vizio Food" />
+          </div>
+        </div>
+      </section>
+
+      <section className="vz-section vz-container" style={{ maxWidth: 760 }}>
+        <p className="vz-eyebrow">A decade in the making</p>
+        <h2>Italian comfort, with a Western Australian soul.</h2>
+        <p className="vz-muted">
+          We make pasta the old way: with good flour, free-range eggs and plenty of patience. Our recipes travel from
+          the villages of Italy to our sunny little corner of {settings?.suburb || 'Leederville'}, with room for the
+          local seasons to speak.
+        </p>
+      </section>
+
+      <section className="vz-section vz-container">
+        <div className="menu-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          {timeline.map((entry) => (
+            <Card key={entry.year} pad>
+              <div className="vz-eyebrow" style={{ marginBottom: 6 }}>{entry.year}</div>
+              <p style={{ marginBottom: 0 }}>{entry.body}</p>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="vz-section vz-container">
+        <div className="menu-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          {values.map(({ icon: Icon, title, body }) => (
+            <Card key={title} pad>
+              <Icon size={26} color="var(--terracotta)" />
+              <h3 style={{ marginTop: 12 }}>{title}</h3>
+              <p className="vz-muted" style={{ marginBottom: 0 }}>{body}</p>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {settings && (addressLine || settings.phone || hours.length > 0) && (
+        <section className="vz-section vz-container" style={{ maxWidth: 640 }}>
+          <p className="vz-eyebrow">Visit us</p>
+          <h2>Find your way to the table.</h2>
+          <div className="vz-stack">
+            {addressLine && (
+              <p className="vz-row">
+                <MapPin size={17} />
+                {settings.googleMapsUrl ? (
+                  <a href={settings.googleMapsUrl} target="_blank" rel="noreferrer">{addressLine}</a>
+                ) : (
+                  addressLine
+                )}
+              </p>
+            )}
+            {settings.phone && (
+              <p className="vz-row">
+                <Phone size={17} />
+                <a href={`tel:${settings.phone.replace(/\s/g, '')}`}>{settings.phone}</a>
+              </p>
+            )}
+            {hours.map((line) => (
+              <p className="vz-row" key={line}>
+                <Clock size={17} /> {line}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}

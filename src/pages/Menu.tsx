@@ -1,62 +1,291 @@
-import { useMemo, useState } from 'react'; import { motion } from 'framer-motion'; import { Plus, X } from 'lucide-react'; import hero from '../assets/hero-pasta.png'; import { addItem, readCart, writeCart, type CartModifier } from '../cart'; import { useToast } from '../components/Toast'; import { useProducts } from '../hooks/useProducts'; import { useRestaurantSettings } from '../hooks/useRestaurantSettings'; import type { CustomerProduct, PublicModifierGroup } from '../services/products';
+/**
+ * Menu page — fully database-driven. Category filters follow the admin's
+ * category order; every product card opens the customizer modal when it has
+ * modifier groups (required groups block Add-to-cart until satisfied), and
+ * adds straight to the cart otherwise. Ordering pauses block adds but never
+ * browsing.
+ */
 
-// The menu is fully database-driven: products and categories come from
-// Supabase (ordered by the admin Categories page), and each product carries
-// its own assigned modifier groups (Admin → Products → Modifiers). The old
-// hardcoded modifier array is gone.
+import { useMemo, useState } from 'react';
+import { Leaf, WheatOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useCart } from '../context/CartProvider';
+import { useToast } from '../components/Toast';
+import { ComboDialog } from '../components/ComboDialog';
+import { useProducts } from '../hooks/useProducts';
+import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
+import type { CustomerProduct, PublicModifierGroup } from '../services/products';
+import { Badge, Button, Card, EmptyState, ErrorBox, Modal, Skeleton, Textarea } from '../ui';
+import { aud, effectiveUnitPrice } from '../lib/money';
 
-const Skeleton=()=> <div className="menu-grid" aria-label="Loading menu">{[1,2,3].map(i=><div className="menu-item menu-skeleton" key={i}/>)}</div>;
+function ModifierGroup({
+  group,
+  selected,
+  onToggle,
+}: {
+  group: PublicModifierGroup;
+  selected: Set<string>;
+  onToggle: (optionId: string) => void;
+}) {
+  const isSingle = group.minSelections === 1 && group.maxSelections === 1;
+  const atMax = group.maxSelections > 0 && [...selected].filter((id) => group.options.some((o) => o.id === id)).length >= group.maxSelections;
 
-export default function Menu(){
-  const {products,categories:menuCategories,modifierGroupsByProduct,loading,error,retry}=useProducts();
-  const {settings}=useRestaurantSettings();
-  const paused=settings?!settings.ordersEnabled:false;
-  const [filter,setFilter]=useState('All');
-  const [selected,setSelected]=useState<CustomerProduct>();
-  const [choices,setChoices]=useState<Record<string,string[]>>({});
-  const [instructions,setInstructions]=useState('');
-  const toast=useToast();
-  const categories=useMemo(()=>menuCategories.length?['All',...menuCategories.map(c=>c.name)]:['All',...Array.from(new Set(products.map(p=>p.category)))],[menuCategories,products]);
-  const filtered=useMemo(()=>products.filter(product=>filter==='All'||product.category===filter),[products,filter]);
-  const groupsFor=(dish:CustomerProduct):PublicModifierGroup[]=>modifierGroupsByProduct[dish.id]??[];
-  // Products without modifier groups go straight to the cart — no empty
-  // customisation dialog.
-  const addDirect=(dish:CustomerProduct)=>{
-    if(paused){toast.show(settings?.orderPauseMessage||'Online ordering is currently paused.','error');return}
-    writeCart(addItem(readCart(),{key:crypto.randomUUID(),productId:dish.id,name:dish.name,price:dish.price,quantity:1,modifiers:[],instructions:''}));
-    toast.show(`${dish.name} added to cart`);
-  };
-  const openCustomiser=(dish:CustomerProduct)=>{if(!groupsFor(dish).length){addDirect(dish);return}if(paused){toast.show(settings?.orderPauseMessage||'Online ordering is currently paused.','error');return}setSelected(dish);setChoices({});setInstructions('')};
-  const selectedModifiers=(groups:PublicModifierGroup[]):CartModifier[]=>groups.flatMap(group=>(choices[group.id]??[]).map(optionId=>{const option=group.options.find(o=>o.id===optionId);return option?{id:option.id,name:option.name,price:option.price}:null})).filter((m):m is CartModifier=>m!==null);
-  // A group is satisfied once the customer has picked at least its minimum
-  // selections; Add to Cart stays blocked until every group with a minimum
-  // (i.e. every required group) is satisfied. Optional groups can be skipped.
-  const unsatisfied=(groups:PublicModifierGroup[])=>groups.filter(group=>(choices[group.id]??[]).length<group.minSelections);
-  const choose=(group:PublicModifierGroup,optionId:string)=>setChoices(current=>{const selectedIds=current[group.id]??[];if(group.minSelections===1&&group.maxSelections===1)return{...current,[group.id]:[optionId]};if(selectedIds.includes(optionId))return{...current,[group.id]:selectedIds.filter(id=>id!==optionId)};if(group.maxSelections>0&&selectedIds.length>=group.maxSelections){toast.show(`Up to ${group.maxSelections} from ${group.name}.`,'error');return current}return{...current,[group.id]:[...selectedIds,optionId]}});
-  const add=()=>{if(!selected)return;const modifiers=selectedModifiers(groupsFor(selected));writeCart(addItem(readCart(),{key:crypto.randomUUID(),productId:selected.id,name:selected.name,price:selected.price,quantity:1,modifiers,instructions}));setSelected(undefined);toast.show(`${selected.name} added to cart`)};
-  const productGroups=selected?groupsFor(selected):[];const blocked=unsatisfied(productGroups);const total=selected?selected.price+selectedModifiers(productGroups).reduce((sum,m)=>sum+m.price,0):0;
-  return <main className="menu-page">
-    <section className="page-head"><p className="eyebrow">Our menu</p><h1>Made with<br/><em>intention.</em></h1><p>Seasonal ingredients, Italian technique, no unnecessary fuss.</p></section>
-    {paused&&<p className="menu-paused-note" role="status">{settings?.orderPauseMessage||'Online ordering is currently paused.'} You can still browse the menu — your cart is saved.</p>}
-    <div className="filters" aria-label="Menu categories">{categories.map(category=><button className={filter===category?'active':''} onClick={()=>setFilter(category)} key={category}>{category}</button>)}</div>
-    {loading?<Skeleton/>:error?<div className="admin-message error" role="alert">{error}<button className="textlink retry" onClick={()=>void retry()}>Try again</button></div>:!filtered.length?<div className="admin-message">No dishes are available right now.</div>:
-    <section className="menu-grid">{filtered.map((dish,i)=><motion.article initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} transition={{delay:i*.04}} className="menu-item" key={dish.id}>
-      <div className="menu-image" style={{backgroundImage:`url(${dish.imageUrl||hero})`}}/>
-      <div><h2>{dish.name}</h2><p>{dish.description}</p>
-        <div className="item-bottom"><b>{dish.price?`$${dish.price.toFixed(2)}`:'Available'}</b><button onClick={()=>openCustomiser(dish)} aria-label={`Customize ${dish.name}`}><Plus size={18}/></button></div>
+  return (
+    <div className="mod-group">
+      <div className="mod-group__head">
+        <span className="mod-group__name">{group.name}</span>
+        <span className="mod-group__rule">
+          {group.required
+            ? isSingle
+              ? 'Choose one'
+              : `Choose ${group.minSelections}${group.maxSelections > group.minSelections ? `–${group.maxSelections}` : ''}`
+            : 'Optional'}
+        </span>
       </div>
-    </motion.article>)}</section>}
-    {selected&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label={`Customize ${selected.name}`}>
-      <button className="modal-close" onClick={()=>setSelected(undefined)} aria-label="Close"><X/></button>
-      <h2>{selected.name}</h2><p>Choose your options and add a note for the kitchen.</p>
-      {productGroups.map(group=>{const single=group.minSelections===1&&group.maxSelections===1;const chosen=choices[group.id]??[];return <fieldset className="mod-group" key={group.id}>
-        <legend>{group.name}{group.minSelections>0&&<em className="mod-required" aria-hidden="true"> *</em>}{group.required&&<small className="mod-required-label">Required</small>}{!single&&group.maxSelections>0&&<small className="mod-required-label">Up to {group.maxSelections}</small>}</legend>
-        {group.options.map(option=>{const checked=chosen.includes(option.id);return <label className="modifier" key={option.id}>{single?<input type="radio" name={group.id} checked={checked} onChange={()=>choose(group,option.id)}/>:<input type="checkbox" checked={checked} onChange={()=>choose(group,option.id)}/>}{option.name}{option.price>0?` +$${option.price.toFixed(2)}`:''}</label>})}
-      </fieldset>})}
-      <label>Special instructions<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="e.g. no chilli"/></label>
-      {blocked.length>0&&<p className="mod-blocked" role="alert">Choose an option from {blocked.map(group=>group.name).join(', ')} to continue.</p>}
-      <button className="admin-primary" onClick={add} disabled={blocked.length>0}>Add to cart · ${total.toFixed(2)}</button>
-    </section></div>}
-    <p className="gf-note">GF pasta available on request. Please let us know about any allergies.</p>
-  </main>;
+      <div className="mod-options">
+        {group.options.map((option) => {
+          const checked = selected.has(option.id);
+          return (
+            <label key={option.id} className={`mod-option ${checked ? 'is-checked' : ''}`}>
+              <input
+                type={isSingle ? 'radio' : 'checkbox'}
+                name={group.id}
+                checked={checked}
+                onChange={() => {
+                  if (isSingle) {
+                    group.options.forEach((o) => selected.delete(o.id));
+                    onToggle(option.id);
+                    return;
+                  }
+                  if (!checked && atMax) return; // max enforced silently; rule shown in header
+                  onToggle(option.id);
+                }}
+              />
+              <span className="mod-option__name">{option.name}</span>
+              {option.priceMode === 'override'
+                ? <span className="mod-option__price">{aud(option.price)}</span>
+                : option.price > 0 && <span className="mod-option__price">+{aud(option.price)}</span>}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Customizer({
+  product,
+  groups,
+  onClose,
+}: {
+  product: CustomerProduct;
+  groups: PublicModifierGroup[];
+  onClose: () => void;
+}) {
+  const { addItem } = useCart();
+  const toast = useToast();
+  const [selectedByGroup, setSelectedByGroup] = useState<Record<string, Set<string>>>({});
+  const [instructions, setInstructions] = useState('');
+
+  const toggle = (groupId: string, optionId: string) => {
+    setSelectedByGroup((current) => {
+      const set = new Set(current[groupId] ?? []);
+      if (set.has(optionId)) set.delete(optionId);
+      else set.add(optionId);
+      return { ...current, [groupId]: set };
+    });
+  };
+
+  const collect = () =>
+    groups.flatMap((group) =>
+      [...(selectedByGroup[group.id] ?? [])]
+        .map((id) => group.options.find((o) => o.id === id))
+        .filter((o): o is NonNullable<typeof o> => Boolean(o))
+        .map((o) => ({ id: o.id, name: o.name, price: o.price, priceMode: o.priceMode })),
+    );
+
+  const unsatisfied = groups.filter((group) => group.required && (selectedByGroup[group.id] ?? new Set()).size < group.minSelections);
+  const modifiers = collect();
+  const unitPrice = effectiveUnitPrice(product.price, modifiers);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={product.name}
+      footer={
+        <>
+          <span style={{ marginRight: 'auto', fontWeight: 800, fontSize: '1.05rem' }}>{aud(unitPrice)}</span>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={unsatisfied.length > 0}
+            onClick={() => {
+              addItem({
+                productId: product.id,
+                name: product.name,
+                price: product.price,
+                quantity: 1,
+                modifiers,
+                instructions: instructions.trim(),
+              });
+              toast.show(`${product.name} added to your order`);
+              onClose();
+            }}
+          >
+            Add to order
+          </Button>
+        </>
+      }
+    >
+      {product.description && <p className="vz-muted" style={{ marginTop: 0 }}>{product.description}</p>}
+      {groups.map((group) => (
+        <ModifierGroup
+          key={group.id}
+          group={group}
+          selected={selectedByGroup[group.id] ?? new Set()}
+          onToggle={(optionId) => toggle(group.id, optionId)}
+        />
+      ))}
+      <div className="vz-field">
+        <label className="vz-field__label" htmlFor="special-instructions">Special instructions</label>
+        <Textarea
+          id="special-instructions"
+          placeholder="Allergies, extra care, a birthday…"
+          value={instructions}
+          maxLength={500}
+          onChange={(event) => setInstructions(event.target.value)}
+        />
+      </div>
+      {unsatisfied.length > 0 && (
+        <p className="vz-field__error" role="alert">
+          Choose {unsatisfied.map((g) => g.name).join(', ')} to continue.
+        </p>
+      )}
+    </Modal>
+  );
+}
+
+export default function Menu() {
+  const { products, categories, modifierGroupsByProduct, loading, error, retry } = useProducts();
+  const { settings } = useRestaurantSettings();
+  const { addItem } = useCart();
+  const toast = useToast();
+  const [filter, setFilter] = useState<string>('All');
+  const [customizing, setCustomizing] = useState<CustomerProduct | null>(null);
+  const [comboOpen, setComboOpen] = useState<CustomerProduct | null>(null);
+
+  const visible = useMemo(
+    () => (filter === 'All' ? products : products.filter((p) => p.category.toLowerCase() === filter.toLowerCase())),
+    [products, filter],
+  );
+
+  const add = (product: CustomerProduct) => {
+    if (settings && !settings.ordersEnabled) {
+      toast.show(settings.orderPauseMessage || 'Online ordering is paused right now.', { type: 'error' });
+      return;
+    }
+    // Combos always open the builder — their choices are required.
+    if (product.isCombo) {
+      setComboOpen(product);
+      return;
+    }
+    const groups = modifierGroupsByProduct[product.id] ?? [];
+    if (groups.length > 0) {
+      setCustomizing(product);
+      return;
+    }
+    addItem({ productId: product.id, name: product.name, price: product.price, quantity: 1, modifiers: [], instructions: '' });
+    toast.show(`${product.name} added to your order`);
+  };
+
+  return (
+    <div className="vz-container vz-section" style={{ paddingTop: 'clamp(28px, 5vw, 54px)' }}>
+      <p className="vz-eyebrow">Our menu</p>
+      <h1 style={{ marginBottom: 6 }}>Made with intention.</h1>
+      <p className="vz-muted" style={{ maxWidth: '52ch' }}>
+        Seasonal ingredients, Italian technique, no unnecessary fuss.
+      </p>
+
+      <div className="menu-filter" role="group" aria-label="Menu categories">
+        <button className={filter === 'All' ? 'is-active' : ''} onClick={() => setFilter('All')}>All</button>
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            className={filter === category.name ? 'is-active' : ''}
+            onClick={() => setFilter(category.name)}
+          >
+            {category.name}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="menu-grid">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Card key={index} className="menu-item">
+              <Skeleton height={175} style={{ borderRadius: 0 }} />
+              <div style={{ padding: 16 }}>
+                <Skeleton height={20} width="70%" />
+                <Skeleton height={14} width="90%" style={{ marginTop: 8 }} />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="vz-stack">
+          <ErrorBox>{error}</ErrorBox>
+          <div><Button variant="secondary" onClick={() => void retry()}>Try again</Button></div>
+        </div>
+      ) : visible.length === 0 ? (
+        <EmptyState title="Nothing on this section yet">Check another category.</EmptyState>
+      ) : (
+        <div className="menu-grid">
+          {visible.map((product, index) => (
+            <motion.div
+              key={product.id}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(index * 0.04, 0.3) }}
+            >
+              <Card className="menu-item">
+                <div className="menu-item__image">
+                  {product.imageUrl && <img src={product.imageUrl} alt={product.name} loading="lazy" />}
+                  <div className="menu-item__flags">
+                    {product.popular && <Badge tone="gold">Popular</Badge>}
+                    {product.vegetarian && <Badge tone="olive" dot>Vegetarian</Badge>}
+                    {product.glutenFree && <Badge tone="info" dot>GF</Badge>}
+                  </div>
+                </div>
+                <div className="menu-item__body">
+                  <div className="menu-item__name">{product.name}{product.isCombo && <Badge tone="terracotta">Combo</Badge>}</div>
+                  <div className="menu-item__desc">{product.description}</div>
+                  <div className="menu-item__foot">
+                    <span className="menu-item__price">{aud(product.price)}</span>
+                    <Button size="sm" onClick={() => add(product)}>
+                      {product.isCombo || (modifierGroupsByProduct[product.id] ?? []).length > 0 ? 'Customize' : 'Add'}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <p className="vz-muted" style={{ marginTop: 34, textAlign: 'center' }}>
+        GF pasta available on request. Please let us know about any allergies.
+      </p>
+
+      {customizing && (
+        <Customizer
+          product={customizing}
+          groups={modifierGroupsByProduct[customizing.id] ?? []}
+          onClose={() => setCustomizing(null)}
+        />
+      )}
+      {comboOpen && (
+        <ComboDialog combo={comboOpen} onClose={() => setComboOpen(null)} />
+      )}
+    </div>
+  );
 }

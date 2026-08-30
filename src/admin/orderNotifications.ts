@@ -1,5 +1,26 @@
-/** Track which order IDs have already been notified this session to prevent duplicates. */
-const notified = new Set<string>();
+/**
+ * Track which order IDs have already been notified to prevent duplicate
+ * alerts. Persisted in localStorage (not just this session) so unrelated
+ * UPDATEs to an already-paid New order — e.g. a Stripe webhook replay
+ * re-asserting payment fields after a page reload — cannot re-alert.
+ */
+const NOTIFIED_KEY = 'vizio.notifiedOrders';
+function loadNotified(): string[] {
+  try {
+    const raw = window.localStorage.getItem(NOTIFIED_KEY);
+    const ids = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(ids) ? ids.slice(-500) : [];
+  } catch {
+    return [];
+  }
+}
+const notified = new Set<string>(loadNotified());
+function rememberNotified(orderId: string): void {
+  try {
+    const ids = Array.from(notified).slice(-499).concat(orderId);
+    window.localStorage.setItem(NOTIFIED_KEY, JSON.stringify(ids));
+  } catch { /* storage unavailable — in-memory dedupe still applies */ }
+}
 
 /**
  * HTMLAudioElement used for the new-order chime. Created lazily on first play so
@@ -150,6 +171,7 @@ export function notifyNewOrder(
     return;
   }
   notified.add(orderId);
+  rememberNotified(orderId);
   console.log('[vizio-sound] → marked notified', orderId);
 
   const orderNumber = String(payload.order_number ?? '');

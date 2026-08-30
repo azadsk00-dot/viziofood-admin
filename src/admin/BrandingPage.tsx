@@ -1,9 +1,15 @@
+/**
+ * Branding admin — logo upload with live header preview. The saved logo is
+ * the settings-driven source of truth for the public site header/footer
+ * (realtime: appears without a redeploy).
+ */
+
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Image as ImageIcon, Save, Trash2, Upload } from 'lucide-react';
-import { PageTitle } from './components';
 import { deleteProductImage, getSettings, saveSettings, uploadBrandImage } from './supabase';
 import { useResource } from './useResource';
 import { useToast } from '../components/Toast';
+import { Button, Card, Skeleton } from '../ui';
 
 export function BrandingPage() {
   const resource = useResource(getSettings);
@@ -47,49 +53,61 @@ export function BrandingPage() {
     }
   };
 
-  const useTextLogo = () => setLogoUrl(null);
-
-  if (resource.loading) return <section className="admin-page"><PageTitle title="Website Branding" /><p className="admin-message">Loading…</p></section>;
-  if (resource.error) return <section className="admin-page"><PageTitle title="Website Branding" /><p className="admin-message error">{resource.error}</p></section>;
-
   return (
-    <section className="admin-page">
-      <PageTitle title="Website Branding">
-        <button className="admin-primary" onClick={() => void handleSave()} disabled={saving || uploading}>
+    <>
+      <div className="admin-head">
+        <div>
+          <h1>Branding</h1>
+          <p className="admin-head__sub">The site logo — live on the public header and footer the moment you save.</p>
+        </div>
+        <Button onClick={() => void handleSave()} disabled={saving || uploading}>
           <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
-        </button>
-      </PageTitle>
+        </Button>
+      </div>
 
-      <section className="admin-card settings-section">
-        <div className="settings-section-header">
-          <ImageIcon size={18} />
-          <h2>Website Logo</h2>
-        </div>
-
-        <div className="admin-form">
-          <div className="branding-preview" aria-label="Logo preview">
-            <header className="branding-preview-nav">
-              {logoUrl
-                ? <img src={logoUrl} alt="Website logo preview" className="brand-logo" />
-                : <span className="brand">VIZIO <i>FOOD</i></span>}
-            </header>
-            <p className="settings-hint">Preview of the site header. Until you upload and save a logo, the current text logo stays in place.</p>
+      {resource.loading ? (
+        <Skeleton height={220} />
+      ) : resource.error ? (
+        <p className="vz-error-box">{resource.error}</p>
+      ) : (
+        <Card pad>
+          <div className="vz-row" style={{ gap: 8, marginBottom: 16 }}>
+            <ImageIcon size={18} color="var(--terracotta)" />
+            <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Website logo</h2>
           </div>
 
-          <div className="settings-field">
-            <span>Logo image</span>
-            <div className="image-field">
-              <input ref={fileInput} type="file" accept="image/*" hidden onChange={event => void handleImage(event)} />
-              <button className="admin-primary outline" onClick={() => fileInput.current?.click()} disabled={uploading}>
-                <Upload size={15} /> {uploading ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
-              </button>
-              {logoUrl && <button className="admin-primary outline" onClick={useTextLogo} disabled={uploading}><Trash2 size={15} /> Use text logo</button>}
-            </div>
+          <div style={{
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius-md)',
+            padding: '14px 20px',
+            background: 'var(--cream)',
+            marginBottom: 18,
+          }} aria-label="Logo preview">
+            {logoUrl
+              ? <img src={logoUrl} alt="Website logo preview" style={{ height: 46, width: 'auto' }} />
+              : <span className="site-logo__word" style={{ fontSize: '1.35rem' }}>Vizio Food</span>}
+            <p className="vz-muted" style={{ fontSize: '0.82rem', marginTop: 10, marginBottom: 0 }}>
+              Preview of the site header. Until you upload and save a logo, the text logo stays in place.
+            </p>
           </div>
 
-          <p className="settings-hint">PNG, JPEG or WebP up to 8 MB (large images are compressed automatically). The saved logo appears in the public site header and footer immediately after saving — no redeploy needed.</p>
-        </div>
-      </section>
-    </section>
+          <input ref={fileInput} type="file" accept="image/*" hidden onChange={(event) => void handleImage(event)} />
+          <div className="vz-row">
+            <Button variant="secondary" onClick={() => fileInput.current?.click()} disabled={uploading}>
+              <Upload size={15} /> {uploading ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
+            </Button>
+            {logoUrl && (
+              <Button variant="ghost" onClick={() => setLogoUrl(null)} disabled={uploading}>
+                <Trash2 size={15} /> Use text logo
+              </Button>
+            )}
+          </div>
+
+          <p className="vz-muted" style={{ fontSize: '0.84rem', marginTop: 14, marginBottom: 0 }}>
+            PNG, JPEG or WebP up to 8 MB (large images are compressed automatically).
+          </p>
+        </Card>
+      )}
+    </>
   );
 }

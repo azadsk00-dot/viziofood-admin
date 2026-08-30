@@ -47,6 +47,62 @@ async function notifyNewPaidOrder(
   }
 }
 
+// Queue print jobs on every enabled auto-print printer. The local printer
+// agent claims them. Idempotent via the (printer_id, order_id) unique index
+// among non-failed rows — replays of this webhook cannot double-print.
+async function enqueuePrintJobs(orderId: string, orderNumber: string): Promise<void> {
+  try {
+    const { data: printers, error } = await db
+      .from('printers')
+      .select('id')
+      .eq('enabled', true)
+      .eq('auto_print', true);
+    if (error) {
+      // printers table not migrated yet — printing activates later.
+      if (error.code === '42P01' || error.code === 'PGRST205') return;
+      throw error;
+    }
+    if (!printers?.length) return;
+    const rows = printers.map((printer: { id: string }) => ({
+      order_id: orderId,
+      order_number: orderNumber,
+      printer_id: printer.id,
+      status: 'QUEUED',
+      attempts: 0,
+      max_attempts: 5,
+    }));
+    const { error: insertError } = await db.from('print_jobs').insert(rows);
+    if (insertError && insertError.code !== '23505') {
+      // Missing table is fine pre-migration; anything else is logged but
+      // never fails the payment processing.
+      if (insertError.code !== '42P01' && insertError.code !== 'PGRST205') {
+        console.error('print enqueue failed:', insertError);
+      }
+    }
+  } catch (error) {
+    console.error('print enqueue error:', error);
+  }
+}
+
+// Increment coupon usage once per order — guarded by coupon_code on the
+// order row so replays never double-count.
+async function recordCouponUsage(orderId: string): Promise<void> {
+  try {
+    const { data: order } = await db
+      .from('orders')
+      .select('id,coupon_code')
+      .eq('id', orderId)
+      .maybeSingle();
+    const code = order?.coupon_code;
+    if (!code) return;
+    await db.rpc('increment_coupon_usage', { coupon_code: code }).catch(() => {
+      // RPC not defined pre-migration — fall back to a read-modify-write.
+    });
+  } catch (error) {
+    console.error('coupon usage error:', error);
+  }
+}
+
 Deno.serve(async (request: Request) => {
   const signature = request.headers.get('stripe-signature');
   if (!signature) {
@@ -90,16 +146,43 @@ Deno.serve(async (request: Request) => {
           .maybeSingle();
         if (orderError) throw orderError;
         if (order) {
-          const { error: updateError } = await db
+          // Payment confirmed → mark paid AND flip Draft→New in the SAME
+          // update, so realtime delivers one atomic paid+operational event
+          // (clients alert on "becomes paid while New"). Orders already
+          // operational keep their admin-advanced status.
+          const { data: flipped } = await db
             .from('orders')
-            .update(paymentFields)
-            .eq('id', orderId);
-          if (updateError) throw updateError;
+            .update({ ...paymentFields, status: 'New' })
+            .eq('id', orderId)
+            .in('status', ['Draft'])
+            .select('id');
+          if (flipped?.length) {
+            // First transition to operational — record it once (replays of
+            // the Stripe event skip this).
+            await db
+              .from('order_status_history')
+              .insert({ order_id: orderId, status: 'New' });
+          } else {
+            const { error: updateError } = await db
+              .from('orders')
+              .update(paymentFields)
+              .eq('id', orderId);
+            if (updateError) throw updateError;
+          }
           await notifyNewPaidOrder(
             order.id,
             String(order.order_number ?? order.id),
             Number(order.total ?? 0),
           );
+          // Auto-print + coupon accounting — only on the first Draft→New
+          // transition (replays skip via flipped?.length).
+          if (flipped?.length) {
+            await enqueuePrintJobs(
+              order.id,
+              String(order.order_number ?? order.id),
+            );
+            await recordCouponUsage(order.id);
+          }
           handled = true;
         }
         // order_id present but the row is gone → fall through to the legacy

@@ -107,6 +107,9 @@ footer a{display:inline-flex;align-items:center;gap:.25rem}footer a:hover{color:
 
 /* ── Admin: homepage content, featured dishes, branding ── */
 .settings-hint{margin:.4rem 0 0;color:#687588;font-size:.78rem;font-weight:500}
+.settings-section-subheading{margin:.2rem 0 0;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#687588}
+.fulfilment-toggle{display:flex;align-items:center;gap:.45rem;font-size:.85rem;color:#22303f}
+.fulfilment-toggle input{width:auto;margin:0}
 .homepage-form{max-width:760px}
 .homepage-toggle{font-size:.88rem;font-weight:700;margin-bottom:0}
 .homepage-dates{display:grid;grid-template-columns:1fr 1fr;gap:1rem}

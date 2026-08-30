@@ -7,6 +7,8 @@ export interface Product {
   category: string;
   price: number;
   sku: string;
+  /** Combo bundle — price is the fixed bundle total; choice groups managed in the editor. */
+  isCombo: boolean;
   active: boolean;
   available: boolean;
   featured: boolean;
@@ -47,7 +49,7 @@ export interface Order {
   customer: string;
   email: string;
   phone: string;
-  fulfilment: 'Pickup' | 'Delivery';
+  fulfilment: 'Pickup' | 'Delivery' | 'Dine-in';
   paymentStatus: PaymentStatus;
   refundStatus: RefundStatus;
   refundId: string;
@@ -73,7 +75,7 @@ export interface Customer { id: string; name: string; email: string; orders: num
 export interface AdminCategory { id: string; name: string; description: string; active: boolean; displayOrder: number; count: number }
 
 export interface ModifierGroup { id: string; name: string; required: boolean; minSelections: number; maxSelections: number; active: boolean; displayOrder: number }
-export interface ModifierOption { id: string; groupId: string; name: string; description: string; price: number; active: boolean; displayOrder: number }
+export interface ModifierOption { id: string; groupId: string; name: string; description: string; price: number; pricingMode: 'adjustment' | 'override'; active: boolean; displayOrder: number }
 
 export interface DayHours { open: string; close: string; closed: boolean }
 export interface OpeningHours { [key: string]: DayHours }
@@ -99,6 +101,16 @@ export interface RestaurantSettings {
   logoUrl: string | null;
   ordersEnabled: boolean;
   orderPauseMessage: string;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
+  // Extended by the 20260826 migration — optional until it has been applied.
+  minimumOrder?: number;
+  deliveryMinimumOrder?: number;
+  pickupTime?: number;
+  deliveryTime?: number;
+  pickupInstructions?: string;
+  orderSoundEnabled?: boolean;
+  autoPrintEnabled?: boolean;
 }
 
 export type HomepagePromoType = 'daily' | 'weekly';

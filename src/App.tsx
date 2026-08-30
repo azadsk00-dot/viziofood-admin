@@ -1,37 +1,32 @@
-import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import { AdminRoute, StaffRoute } from "./components/ProtectedRoute";
-import { Footer, Navbar, OrdersPausedBanner } from "./components/Layout";
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { AdminRoute, StaffRoute } from './components/ProtectedRoute';
+import { Footer, Navbar, OrdersPausedBanner } from './components/Layout';
 
-import ProductManagement from "./admin/ProductManagement";
-import {
-  EnhancedDashboard,
-  EnhancedOrders,
-} from "./admin/AdminEnhanced";
+import ProductManagement from './admin/ProductManagement';
+import { EnhancedDashboard, EnhancedOrders } from './admin/AdminEnhanced';
+import { Categories, Customers, Reports } from './admin/pages';
+import { SettingsPage } from './admin/Settings';
+import { FeaturedDishesPage } from './admin/FeaturedDishesPage';
+import { BrandingPage } from './admin/BrandingPage';
+import { ModifiersPage } from './admin/ModifiersPage';
 
-import {
-  Categories,
-  Customers,
-  Reports,
-} from "./admin/pages";
-import { SettingsPage } from "./admin/Settings";
-import { HomepageContentPage } from "./admin/HomepageContentPage";
-import { FeaturedDishesPage } from "./admin/FeaturedDishesPage";
-import { BrandingPage } from "./admin/BrandingPage";
-import { ModifiersPage } from "./admin/ModifiersPage";
+import AdminLogin from './pages/AdminLogin';
+import { CheckoutCancel, CheckoutSuccess } from './pages/CheckoutResult';
 
-import AdminLogin from "./pages/AdminLogin";
-import { CheckoutCancel, CheckoutSuccess } from "./pages/CheckoutResult";
-
-const Home = lazy(() => import("./pages/Home"));
-const Menu = lazy(() => import("./pages/Menu"));
-const About = lazy(() => import("./pages/About"));
-const Checkout = lazy(() => import("./pages/Checkout"));
-const Account = lazy(() => import("./pages/Account"));
-const Kitchen = lazy(() => import("./pages/Kitchen"));
-const AdminLayout = lazy(() => import("./admin/AdminLayout"));
+const Home = lazy(() => import('./pages/Home'));
+const Menu = lazy(() => import('./pages/Menu'));
+const About = lazy(() => import('./pages/About'));
+const Checkout = lazy(() => import('./pages/Checkout'));
+const Account = lazy(() => import('./pages/Account'));
+const Kitchen = lazy(() => import('./pages/Kitchen'));
+const AdminLayout = lazy(() => import('./admin/AdminLayout'));
+const SpecialsPage = lazy(() => import('./admin/SpecialsPage'));
+const CouponsPage = lazy(() => import('./admin/CouponsPage'));
+const PrintersPage = lazy(() => import('./admin/PrintersPage'));
+const AuditPage = lazy(() => import('./admin/AuditPage'));
 
 function Public() {
   return (
@@ -62,13 +57,13 @@ export default function App() {
   // The admin subdomain serves this same SPA; its root must land in the
   // admin panel instead of the public homepage. Scoped by hostname so the
   // public domain's "/" keeps rendering the public site.
-  if (window.location.hostname === "admin.viziofood.com" && pathname === "/") {
+  if (window.location.hostname === 'admin.viziofood.com' && pathname === '/') {
     return <Navigate to="/admin" replace />;
   }
 
   return (
     <ErrorBoundary>
-      <Suspense fallback={<div className="admin-message">Loading...</div>}>
+      <Suspense fallback={<div className="vz-empty" style={{ padding: 80 }}>Loading…</div>}>
         <Routes>
           <Route path="/kitchen" element={<StaffRoute><Kitchen /></StaffRoute>} />
 
@@ -88,17 +83,20 @@ export default function App() {
             {/* /admin/menu is the historical/bookmarked URL for the menu
                 manager — keep it working as an alias for the products page. */}
             <Route path="menu" element={<ProductManagement />} />
-            <Route path="featured" element={<FeaturedDishesPage />} />
-            <Route path="homepage" element={<HomepageContentPage />} />
-            <Route path="branding" element={<BrandingPage />} />
             <Route path="modifiers" element={<ModifiersPage />} />
+            <Route path="specials" element={<SpecialsPage />} />
+            <Route path="coupons" element={<CouponsPage />} />
+            <Route path="featured" element={<FeaturedDishesPage />} />
+            <Route path="branding" element={<BrandingPage />} />
+            <Route path="printers" element={<PrintersPage />} />
+            <Route path="audit" element={<AuditPage />} />
             <Route path="categories" element={<Categories />} />
             <Route path="customers" element={<Customers />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<SettingsPage />} />
             {/* Unknown /admin/* paths must stay inside the admin panel —
                 without this they fall through to the public site's splat
-                route (e.g. /admin/menu used to render the public menu). */}
+                route. */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>
 

@@ -16,12 +16,30 @@
 -- previously impossible — become valid.
 --
 -- Idempotent: safe to re-run.
+--
+-- FRESH-DB NOTE: the modifiers table itself was created remotely (20260822)
+-- and is reconstructed later in the sequence by
+-- 20260826120001_reconstruct_remote_applied.sql. On a fresh database this
+-- file runs while the table does not exist yet — every step below is
+-- guarded so the migration is a no-op there, and the reconstruction creates
+-- the table directly in its final (per-group unique) form.
+
+do $$ begin
+  if to_regclass('public.modifiers') is null then
+    raise notice 'public.modifiers does not exist yet (fresh database) — skipping; the table is created in final form by 20260826120001.';
+    return;
+  end if;
+end $$;
 
 -- ── 1. Remove the global uniqueness ──
 -- `name text not null unique` (20260822) produces the default constraint
 -- name {table}_{column}_key. NOT NULL stays; only uniqueness is dropped.
-alter table public.modifiers
-  drop constraint if exists modifiers_name_key;
+-- (existence guard: no-op on fresh databases without the table yet)
+do $$ begin
+  if to_regclass('public.modifiers') is not null then
+    execute 'alter table public.modifiers drop constraint if exists modifiers_name_key';
+  end if;
+end $$;
 
 -- Defensive sweep: drop any stray UNIQUE single-column index on modifiers(name)
 -- that is not owned by a constraint (covers indexes created by other names).
@@ -45,7 +63,12 @@ end $$;
 -- ── 2. Guard: same-group case-insensitive duplicates must not exist ──
 -- If future data ever violates the rule, fail loudly with the offending
 -- rows instead of silently succeeding without the index.
+-- (existence guard: no-op on fresh databases without the table yet)
 do $$ declare conflicts text; begin
+  if to_regclass('public.modifiers') is null then
+    raise notice 'skipping duplicate guard — modifiers table not present yet';
+    return;
+  end if;
   select string_agg(format('[%s] %s', g.name, d.names), ', ')
   into conflicts
   from (
@@ -64,5 +87,10 @@ do $$ declare conflicts text; begin
 end $$;
 
 -- ── 3. The correct rule: unique per group, case-insensitive ──
-create unique index if not exists modifiers_group_name_ci_unique_idx
-  on public.modifiers (group_id, lower(trim(name)));
+-- (also guarded for fresh databases — see note above)
+do $$ begin
+  if to_regclass('public.modifiers') is not null then
+    execute $idx$create unique index if not exists modifiers_group_name_ci_unique_idx
+      on public.modifiers (group_id, lower(trim(name)))$idx$;
+  end if;
+end $$;

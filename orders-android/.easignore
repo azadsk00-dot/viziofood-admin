@@ -1,0 +1,9 @@
+# EAS uploads every file when the project isn't git-tracked. Keep the
+# archive tiny — EAS runs its own prebuild and npm install.
+node_modules/
+android/
+.expo/
+dist/
+*.log
+*.keystore
+gradle-build.log

@@ -84,6 +84,7 @@ const repriceCart = async (
   const comboIds = items.map((item) => String(item.productId ?? '')).filter((id) => products.get(id)?.is_combo === true);
   const comboGroupsByProduct = new Map<string, { id: string; name: string; minSelections: number; maxSelections: number }[]>();
   const comboOptionsByGroup = new Map<string, Map<string, number>>(); // groupId → childId → upgrade price
+  const comboChildNames = new Map<string, string>();
   const comboInheritExtras = new Set<string>();
   if (comboIds.length) {
     const [groupsResult, optionsResult] = await Promise.all([
@@ -99,11 +100,12 @@ const repriceCart = async (
       if (row.inherit_extras === true) comboInheritExtras.add(String(row.id));
     }
     for (const row of optionsResult.data ?? []) {
-      const child = (row.products ?? null) as unknown as { id: string; active: boolean; available: boolean; archived_at: string | null } | null;
+      const child = (row.products ?? null) as unknown as { id: string; name: string; active: boolean; available: boolean; archived_at: string | null } | null;
       if (!row.group_id || !child?.id || child.active === false || child.available === false || child.archived_at) continue;
       const group = comboOptionsByGroup.get(String(row.group_id)) ?? new Map<string, number>();
       group.set(String(child.id), Number(row.price ?? 0));
       comboOptionsByGroup.set(String(row.group_id), group);
+      comboChildNames.set(String(child.id), String(child.name));
     }
   }
 
@@ -165,7 +167,7 @@ const repriceCart = async (
           groupId,
           groupName: group.name,
           productId: childId,
-          productName: String(products.get(childId)?.name ?? childId),
+          productName: comboChildNames.get(childId) ?? String(products.get(childId)?.name ?? childId),
           upgrade: Math.round(upgrade * 100) / 100,
         });
         unit += upgrade;

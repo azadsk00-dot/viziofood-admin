@@ -38,6 +38,8 @@ the caveat below.
 | **`20260826120002_order_state_machine`** | DB trigger: forward-only status transitions, terminal states frozen, kitchen accounts restricted to status-only updates |
 | **`20260826120003_coupon_staff_write`** | `staff_manage_coupons` policy — coupons had SELECT-only policies, so every admin save failed with 42501 |
 | **`20260826120004_coupon_model_check`** | replaces the legacy `percentage_off/amount_off NOT NULL` table check (23514 on every new-model coupon) with the stricter named `coupons_model_check`; auto-repairs legacy rows |
+| `20260831_modifier_pricing_mode` | `modifiers.pricing_mode` ('adjustment' default / 'override' replaces base price for sizes) — applied to the live DB from the viziofood repo before being recorded here |
+| `20260902_combo_system` | **Vizio Combos** — `products.is_combo`, `combo_groups` (choice groups with min/max + inherit_extras), `combo_options` (explicitly eligible products; price 0 = included, >0 = one-off upgrade), `order_items.combo_selections`; seeded the example Pasta Lunch Combo. NOTE: the seed's example groups were later reconfigured to individually chosen products (never whole categories) |
 | `20260830120000_staff_read_all_products` | `staff reads all products` SELECT policy — staff-profile roles see inactive/hidden/archived products; UPDATE/DELETE row visibility follows SELECT policies, so without it those rows were silently uneditable (bulk activate/restore matched 0 rows with a success response) |
 
 > **Timestamp note:** the rebuild migration was briefly checked in as

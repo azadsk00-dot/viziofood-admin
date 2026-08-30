@@ -189,18 +189,20 @@ const priceCart = async (cartItems: CartItem[]): Promise<{ items: PricedItem[] }
         const childId = String(selection?.productId ?? '');
         const group = (groupsResult.data ?? []).find(g => String(g.id) === groupId);
         const upgrade = group ? (optionPrice.get(groupId)?.get(childId)) : undefined;
-        if (!group || upgrade === undefined) throw new Error('Invalid combo selection.');
+        if (!group || upgrade === undefined) {
+          return { error: 'This combo includes a choice that is not available. Please rebuild your combo.' };
+        }
         comboUnit += upgrade;
         comboSelections.push({ groupId, groupName: String(group.name), productId: childId, productName: optionName.get(groupId + ':' + childId) ?? childId, upgrade });
       }
       for (const group of groupsResult.data ?? []) {
         const chosen = comboSelections.filter(sel => sel.groupId === String(group.id)).length;
         if (Number(group.min_selections ?? 1) > 0 && chosen < Number(group.min_selections ?? 1)) {
-          throw new Error('Please complete all required combo choices.');
+          return { error: 'Please complete all required combo choices.' };
         }
         const maxSelections = Number((group as { max_selections?: number }).max_selections ?? 1);
         if (maxSelections > 0 && chosen > maxSelections) {
-          throw new Error('Too many choices in ' + String(group.name) + '.');
+          return { error: 'This combo allows up to ' + maxSelections + ' choice' + (maxSelections === 1 ? '' : 's') + ' in ' + String(group.name) + '.' };
         }
       }
     }

@@ -83,7 +83,7 @@ function Editor({ item, done, close }: { item?: Product; done: () => Promise<voi
   }, [item]);
 
   useEffect(() => {
-    if (!item?.id) { setComboGroups([]); setComboLoaded(false); return; }
+    if (!item?.id) { setComboGroups([]); setComboLoaded(true); return; }
     let active = true;
     setComboLoaded(false);
     void getComboGroups(item.id).then((rows) => {
@@ -252,7 +252,9 @@ function Editor({ item, done, close }: { item?: Product; done: () => Promise<voi
         </div>
 
         <h3 style={{ fontSize: '1.02rem', marginTop: 20 }}>Combo choices</h3>
-        <p className="vz-muted" style={{ fontSize: '0.82rem' }}>A combo sells for this product's price as a fixed bundle. Each choice group offers only the products you tick below — a group never pulls in a whole category.</p>
+        <p className="vz-muted" style={{ fontSize: '0.82rem' }}>
+          A combo sells for this product's price as a fixed bundle. Configure its choice groups below — they save together with the product. Each group offers only the products you tick; a group never pulls in a whole category.
+        </p>
         {value.isCombo && <ComboEditor productId={item?.id} groups={comboGroups} setGroups={setComboGroups} loaded={comboLoaded} />}
         {!value.isCombo && <p className="vz-muted" style={{ fontSize: '0.82rem' }}>Enable the “Combo (bundle)” flag above to configure choice groups.</p>}
 

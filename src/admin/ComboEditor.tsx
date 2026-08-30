@@ -54,9 +54,10 @@ export function ComboEditor({ productId, groups, setGroups, loaded }: {
     update(index, { options });
   };
 
-  if (!productId) {
-    return <p className="vz-muted" style={{ fontSize: '0.82rem' }}>Save the product first, then add its choice groups.</p>;
-  }
+  // A brand-new product has no id yet — its choice groups are configured
+  // here immediately and persisted by the product save (createProduct →
+  // saveComboGroups). Only an EXISTING product needs its saved groups
+  // loaded first.
   if (!loaded) {
     return <p className="vz-muted" style={{ fontSize: '0.82rem' }}>Loading combo groups…</p>;
   }

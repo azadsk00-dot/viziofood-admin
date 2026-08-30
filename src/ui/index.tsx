@@ -177,11 +177,18 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // onClose is usually a fresh inline closure from the render that owns the
+  // dialog. Keep the latest one in a ref so the open-time effect below runs
+  // exactly ONCE per open — if it depended on onClose, every parent
+  // re-render (e.g. each keystroke in a form field) would re-run it and
+  // ref.current?.focus() would steal focus out of the field being typed in.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') closeRef.current();
     };
     document.addEventListener('keydown', onKey);
     const previousOverflow = document.body.style.overflow;
@@ -191,7 +198,7 @@ export function Modal({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
@@ -233,14 +240,19 @@ export function Drawer({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  // Same ref pattern as Modal: the listener must not be torn down and
+  // re-attached just because a parent re-rendered with a new onClose.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') closeRef.current();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

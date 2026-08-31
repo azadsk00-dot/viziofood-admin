@@ -30,7 +30,9 @@ export const lineKey = (item: Pick<CartItem, 'productId' | 'modifiers' | 'instru
     productId: item.productId,
     modifiers: normalizedModifiers(item.modifiers).map((m) => m.id),
     instructions: item.instructions.trim(),
-    combo: item.combo ? item.combo.map((selection) => [selection.groupId, selection.productId]) : null,
+    // Sorted so the same combo selections merge into one line regardless of
+    // the order the customer ticked them in.
+    combo: item.combo ? item.combo.map((selection) => [selection.groupId, selection.productId]).sort() : null,
   });
 
 export const addItem = (cart: CartState, item: Omit<CartItem, 'key'>): CartState => {

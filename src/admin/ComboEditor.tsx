@@ -18,9 +18,33 @@ import { useMemo, useState } from 'react';
 import type { AdminComboGroup } from './supabase';
 import { getProducts } from './supabase';
 import { useResource } from './useResource';
-import { Badge, Button, Input } from '../ui';
+import { Badge, Button, Input, Select } from '../ui';
 
 export { CategoryProductPicker };
+
+/** Selectable min/max values (0–6; extend here if the data model allows). */
+export const SELECTION_RANGE = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * Editor-level guard for the whole group set (the server stays authoritative
+ * for pricing; this blocks obviously unusable configurations):
+ *   • every group needs a name
+ *   • 0 ≤ min ≤ max
+ *   • enough eligible products to satisfy the minimum
+ */
+export function validateChoiceGroups(groups: AdminComboGroup[]): string | null {
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (!group.name.trim()) return `Choice group ${index + 1} needs a name.`;
+    if (group.minSelections < 0 || group.maxSelections < 0 || group.minSelections > group.maxSelections) {
+      return `Choice group ${index + 1}: minimum selections must not exceed the maximum.`;
+    }
+    if (group.maxSelections > 0 && group.options.length < group.minSelections) {
+      return `Choice group ${index + 1} (${group.name.trim()}) needs at least ${group.minSelections} eligible product${group.minSelections === 1 ? '' : 's'}.`;
+    }
+  }
+  return null;
+}
 
 /** Pure: group products into collapsible category sections, filtered by search. */
 export function groupProductsByCategory(
@@ -111,12 +135,39 @@ export function ComboEditor({ productId, groups, setGroups, loaded }: {
             aria-label="Group name"
             onChange={(event) => update(index, { name: event.target.value })}
           />
+          <div className="vz-row vz-row--wrap" style={{ marginTop: 8, gap: 10, alignItems: 'center' }}>
+            <label className="vz-row" style={{ gap: 6, fontSize: '0.85rem' }}>
+              Minimum selections
+              <Select
+                aria-label={`Minimum selections for group ${index + 1}`}
+                value={String(group.minSelections)}
+                style={{ width: 'auto' }}
+                onChange={(event) => update(index, { minSelections: Number(event.target.value) })}
+              >
+                {SELECTION_RANGE.map((value) => <option key={value} value={value}>{value}</option>)}
+              </Select>
+            </label>
+            <label className="vz-row" style={{ gap: 6, fontSize: '0.85rem' }}>
+              Maximum selections
+              <Select
+                aria-label={`Maximum selections for group ${index + 1}`}
+                value={String(group.maxSelections)}
+                style={{ width: 'auto' }}
+                onChange={(event) => update(index, { maxSelections: Number(event.target.value) })}
+              >
+                {SELECTION_RANGE.map((value) => <option key={value} value={value}>{value}</option>)}
+              </Select>
+            </label>
+            <Badge tone={group.minSelections > 0 ? 'terracotta' : 'neutral'}>{group.minSelections > 0 ? 'Required' : 'Optional'}</Badge>
+            {group.minSelections > group.maxSelections && (
+              <Badge tone="terracotta">Minimum exceeds maximum</Badge>
+            )}
+          </div>
           <div className="vz-row vz-row--wrap" style={{ marginTop: 8, gap: 10 }}>
             <label className="vz-row" style={{ gap: 6, fontSize: '0.85rem' }}>
               <input type="checkbox" checked={group.inheritExtras} onChange={(event) => update(index, { inheritExtras: event.target.checked })} />
               Inherit this choice’s optional extras
             </label>
-            <Badge tone={group.minSelections > 0 ? 'terracotta' : 'neutral'}>{group.minSelections > 0 ? 'Required' : 'Optional'}</Badge>
           </div>
 
           <p className="vz-muted" style={{ fontSize: '0.8rem', margin: '10px 0 6px' }}>

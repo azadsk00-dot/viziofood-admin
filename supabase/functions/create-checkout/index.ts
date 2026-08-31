@@ -177,7 +177,8 @@ const repriceCart = async (
         if (group.minSelections > 0 && chosen < group.minSelections) {
           return { error: `Please complete all required choices in ${String(product.name ?? label)}.` };
         }
-        if (group.maxSelections > 0 && chosen > group.maxSelections) {
+        if (chosen > group.maxSelections) {
+          // max 0 = nothing may be chosen from this group.
           return { error: `${label} allows up to ${group.maxSelections} choice${group.maxSelections === 1 ? '' : 's'} in ${group.name}.` };
         }
       }

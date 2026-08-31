@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } 
 import { Archive, ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, ImagePlus, Pencil, Plus, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import type { ModifierGroup, Product, ProductDraft } from './types';
 import { archiveProducts, createProduct, deleteProduct, deleteProductImage, getCategories, getComboGroups, getModifierGroups, getProductModifierGroups, getProducts, saveComboGroups, setProductModifierGroups, updateProduct, updateProducts, uploadProductImage, validateProduct, type AdminComboGroup } from './supabase';
-import { ComboEditor } from './ComboEditor';
+import { ComboEditor, validateChoiceGroups } from './ComboEditor';
 import { useResource } from './useResource';
 import { useToast } from '../components/Toast';
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Skeleton, Textarea, Toggle } from '../ui';
@@ -151,6 +151,11 @@ function Editor({ item, done, close }: { item?: Product; done: () => Promise<voi
     event.preventDefault();
     const message = validateProduct(value);
     if (message) { setError(message); return; }
+    // Combo configuration guard — min ≤ max and enough eligible products.
+    if (value.isCombo || comboGroups.length) {
+      const comboIssue = validateChoiceGroups(value.isCombo ? comboGroups : []);
+      if (comboIssue) { setError(comboIssue); return; }
+    }
     setBusy(true);
     setError('');
     try {

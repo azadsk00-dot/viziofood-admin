@@ -5,13 +5,44 @@
  * price 0 = included in the bundle price, positive = a one-off upgrade.
  * "Inherit extras" offers the chosen child's optional add-on modifiers
  * (adjustment mode only) as paid extras in the customer builder.
+ *
+ * Product selection is CATEGORY-BASED: collapsible category sections (Pizza,
+ * Pasta, Drinks, …) so building a bundle never means scrolling one giant
+ * every-product list. Search still spans all categories and auto-expands
+ * matching sections; selections from multiple categories can coexist in one
+ * group.
  */
 
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, Search, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { AdminComboGroup } from './supabase';
 import { getProducts } from './supabase';
 import { useResource } from './useResource';
 import { Badge, Button, Input } from '../ui';
+
+export { CategoryProductPicker };
+
+/** Pure: group products into collapsible category sections, filtered by search. */
+export function groupProductsByCategory(
+  products: Array<{ id: string; name: string; category: string; price: number }>,
+  query: string,
+): Array<{ category: string; items: typeof products }> {
+  const q = query.trim().toLowerCase();
+  const byCategory = new Map<string, typeof products>();
+  for (const product of products) {
+    const key = product.category || 'Other';
+    byCategory.set(key, [...(byCategory.get(key) ?? []), product]);
+  }
+  return [...byCategory.entries()]
+    .map(([category, items]) => ({
+      category,
+      items: q
+        ? items.filter((item) => `${item.name} ${category}`.toLowerCase().includes(q))
+        : items,
+    }))
+    .filter((section) => section.items.length > 0)
+    .sort((a, b) => a.category.localeCompare(b.category));
+}
 
 const blankGroup = (displayOrder: number): AdminComboGroup => ({
   id: '', name: '', displayOrder, minSelections: 1, maxSelections: 1, inheritExtras: false, active: true, options: [],
@@ -118,27 +149,113 @@ export function ComboEditor({ productId, groups, setGroups, loaded }: {
           ) : allProducts.error ? (
             <p className="vz-muted" style={{ fontSize: '0.8rem' }}>Products could not be loaded — save keeps the current choices unchanged.</p>
           ) : (
-            <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: 8 }}>
-              {(allProducts.data ?? []).filter((product) => product.active && !product.archived && product.id !== productId).map((product) => {
-                const option = group.options.find((candidate) => candidate.productId === product.id);
-                return (
-                  <label key={product.id} className="vz-row" style={{ gap: 6, fontSize: '0.82rem', padding: '2px 0', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(option)}
-                      onChange={(event) => toggleOption(index, product, event.target.checked)}
-                    />
-                    {product.name} <small className="vz-muted">({product.category})</small>
-                  </label>
-                );
-              })}
-            </div>
+            <CategoryProductPicker
+              products={(allProducts.data ?? []).filter((product) => product.active && !product.archived && product.id !== productId)}
+              selectedIds={group.options.map((option) => option.productId)}
+              onToggle={(product, checked) => toggleOption(index, product, checked)}
+            />
           )}
         </div>
       ))}
       <Button type="button" variant="secondary" size="sm" onClick={() => setGroups([...groups, blankGroup(groups.length)])}>
         <Plus size={14} /> Add choice group
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Category-first product picker: collapsible sections per category so staff
+ * tick exactly the products they want without scrolling the whole menu.
+ * Search spans every category and auto-expands the sections with matches.
+ * `singleSelect` renders rows as click-to-pick buttons (used by Add-from-menu).
+ */
+function CategoryProductPicker({ products, selectedIds, onToggle, singleSelect }: {
+  products: Array<{ id: string; name: string; category: string; price: number }>;
+  selectedIds: string[];
+  onToggle: (product: { id: string; name: string }, checked: boolean) => void;
+  singleSelect?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  const sections = useMemo(() => groupProductsByCategory(products, query), [products, query]);
+  const searching = query.trim().length > 0;
+  const isOpen = (category: string) =>
+    searching ? true : open[category] ?? false; // searching auto-expands matches
+
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: 8 }}>
+      <div className="vz-row" style={{ gap: 6, marginBottom: 8 }}>
+        <Search size={14} style={{ flexShrink: 0, marginTop: 3 }} />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search all products…"
+          aria-label="Search products"
+          style={{ border: 'none', padding: '2px 0', fontSize: '0.85rem', background: 'transparent' }}
+        />
+        {searching ? (
+          <Button type="button" size="sm" variant="ghost" aria-label="Clear search" onClick={() => setQuery('')}><X size={13} /></Button>
+        ) : null}
+      </div>
+      {sections.length === 0 ? (
+        <p className="vz-muted" style={{ fontSize: '0.8rem', margin: '4px 0' }}>No products match.</p>
+      ) : (
+        <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+          {sections.map(({ category, items }) => {
+            const expanded = isOpen(category);
+            const selectedInSection = items.filter((item) => selectedIds.includes(item.id)).length;
+            return (
+              <div key={category} style={{ borderTop: '1px solid var(--line)' }}>
+                <button
+                  type="button"
+                  className="vz-row vz-row--between"
+                  style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 2px', fontSize: '0.85rem', fontWeight: 700 }}
+                  aria-expanded={expanded}
+                  onClick={() => setOpen((current) => ({ ...current, [category]: !expanded }))}
+                >
+                  <span className="vz-row" style={{ gap: 6 }}>
+                    {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    📁 {category}
+                  </span>
+                  <span className="vz-muted" style={{ fontWeight: 400, fontSize: '0.78rem' }}>
+                    {selectedInSection ? `${selectedInSection} selected · ` : ''}{items.length} product{items.length === 1 ? '' : 's'}
+                  </span>
+                </button>
+                {expanded ? (
+                  <div style={{ padding: '0 2px 6px 20px' }}>
+                    {items.map((product) => {
+                      const checked = selectedIds.includes(product.id);
+                      return singleSelect ? (
+                        <button
+                          key={product.id}
+                          type="button"
+                          className="vz-row vz-row--between"
+                          style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 0', fontSize: '0.82rem' }}
+                          onClick={() => onToggle(product, true)}
+                        >
+                          <span>{product.name}</span>
+                          <span className="vz-muted" style={{ fontSize: '0.78rem' }}>Select →</span>
+                        </button>
+                      ) : (
+                        <label key={product.id} className="vz-row" style={{ gap: 6, fontSize: '0.82rem', padding: '2px 0', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => onToggle(product, event.target.checked)}
+                          />
+                          {product.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

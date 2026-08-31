@@ -54,7 +54,7 @@ function SpecialBanner() {
         <div className="special-banner">
           {special.badge && <span className="special-banner__badge">{special.badge}</span>}
           <div>
-            <div className="special-banner__eyebrow">Special of the day</div>
+            <div className="special-banner__eyebrow">{special.badge || 'Special of the day'}</div>
             <h2>{special.title}</h2>
             <p>{special.description}</p>
             <div className="special-banner__pricing">

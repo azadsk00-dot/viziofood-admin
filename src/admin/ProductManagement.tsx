@@ -15,7 +15,7 @@ import { useToast } from '../components/Toast';
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Skeleton, Textarea, Toggle } from '../ui';
 import { aud } from '../lib/money';
 
-const blank = (): ProductDraft => ({ name: '', description: '', price: 0, category: 'Pasta', sku: '', isCombo: false, active: true, available: true, featured: false, popular: false, archived: false, archivedAt: null, vegetarian: false, vegan: false, halal: false, glutenFree: false, preparationTime: 15, calories: null, ingredients: [], allergens: [], tags: [], displayOrder: 0, imageUrl: null, thumbnailUrl: null, gallery: [], visibility: 'public', internalNotes: '' });
+const blank = (): ProductDraft => ({ name: '', description: '', price: 0, category: '', sku: '', isCombo: false, active: true, available: true, featured: false, popular: false, archived: false, archivedAt: null, vegetarian: false, vegan: false, halal: false, glutenFree: false, preparationTime: 15, calories: null, ingredients: [], allergens: [], tags: [], displayOrder: 0, imageUrl: null, thumbnailUrl: null, gallery: [], visibility: 'public', internalNotes: '' });
 const split = (value: string) => value.split(',').map((part) => part.trim()).filter(Boolean);
 
 function ImageDropzone({ label, multiple = false, onUpload, progress, disabled }: { label: string; multiple?: boolean; onUpload: (files: File[]) => Promise<void>; progress: number | null; disabled: boolean }) {
@@ -167,6 +167,12 @@ function Editor({ item, done, close }: { item?: Product; done: () => Promise<voi
   };
 
   const cancel = () => { void Promise.allSettled(uploadedUrls.map(deleteProductImage)); close(); };
+  const categories = useResource(getCategories);
+  // The product's category may predate the categories table — keep it
+  // selectable so editing an old product never silently clears its category.
+  const categoryOptions = value.category && !categories.data?.some((c) => c.name === value.category)
+    ? [{ id: '', name: value.category, count: 0 }, ...(categories.data ?? [])]
+    : (categories.data ?? []);
   const flagLabel: Record<string, string> = {
     isCombo: 'Combo (bundle)', active: 'Active', available: 'Available', featured: 'Featured', popular: 'Popular',
     vegetarian: 'Vegetarian', vegan: 'Vegan', halal: 'Halal', glutenFree: 'Gluten-free',
@@ -192,7 +198,12 @@ function Editor({ item, done, close }: { item?: Product; done: () => Promise<voi
         <Field label="Name" htmlFor="p-name"><Input id="p-name" required value={value.name} onChange={(event) => set('name', event.target.value)} /></Field>
         <Field label="Description" htmlFor="p-desc"><Textarea id="p-desc" rows={3} value={value.description} onChange={(event) => set('description', event.target.value)} /></Field>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-          <Field label="Category" htmlFor="p-cat"><Input id="p-cat" required value={value.category} onChange={(event) => set('category', event.target.value)} /></Field>
+          <Field label="Category" htmlFor="p-cat">
+            <Select id="p-cat" required value={value.category} onChange={(event) => set('category', event.target.value)}>
+              <option value="">Select a category…</option>
+              {categoryOptions.map((item) => <option key={item.id || item.name} value={item.name}>{item.name}</option>)}
+            </Select>
+          </Field>
           <Field label="Price (AUD)" htmlFor="p-price"><Input id="p-price" required type="number" min={0} step="0.01" value={value.price} onChange={(event) => set('price', Number(event.target.value))} /></Field>
           <Field label="SKU" htmlFor="p-sku"><Input id="p-sku" value={value.sku} onChange={(event) => set('sku', event.target.value)} /></Field>
           <Field label="Display order" htmlFor="p-order"><Input id="p-order" type="number" value={value.displayOrder} onChange={(event) => set('displayOrder', Number(event.target.value))} /></Field>

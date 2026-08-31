@@ -1,12 +1,16 @@
 /**
- * Specials admin — full lifecycle for the Special of the Day: create, edit,
- * duplicate, schedule (dates, time window, days of week), activate, archive,
- * and a live "what's showing now" preview using the exact resolution rules
- * the public homepage applies.
+ * Specials admin — the full picture of what the WEBSITE shows as "specials":
+ *
+ *   1. Scheduled specials (the `specials` table) — create/edit/schedule,
+ *      standalone or LINKED to an existing menu product (no duplicates).
+ *   2. The homepage banner (legacy `homepage_content` promo) — this is what
+ *      visitors see when no scheduled special is live; it was previously not
+ *      editable anywhere in the admin. Managed here now.
+ *   3. Featured dishes — managed on the Featured page; summarised here.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Copy, Eye, Pencil, Plus, Sparkles } from 'lucide-react';
+import { CalendarClock, Copy, Eye, Pencil, Plus, Sparkles, Utensils } from 'lucide-react';
 import {
   archiveSpecial,
   createSpecial,
@@ -15,14 +19,25 @@ import {
   getSpecials,
   updateSpecial,
 } from '../services/specials';
+import { getHomepageContent, getProducts, saveHomepageContent } from './supabase';
+import type { HomepageContent, Product } from './types';
 import { describeSchedule, isSpecialLive } from '../lib/specials';
 import { specialDraftSchema } from '../lib/validation';
 import type { Special, SpecialDraft } from '../types';
 import { useToast } from '../components/Toast';
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Skeleton, Textarea, Toggle } from '../ui';
 import { aud } from '../lib/money';
+import { CategoryProductPicker } from './ComboEditor';
+import { useResource } from './useResource';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Special types the website understands (stored in the badge column). */
+const SPECIAL_TYPES = [
+  { value: 'Special of the Day', label: 'Special of the Day' },
+  { value: 'Special of the Week', label: 'Special of the Week' },
+  { value: 'Special', label: 'Other / General special' },
+];
 
 const emptyDraft = (): SpecialDraft => ({
   title: '',
@@ -131,6 +146,23 @@ function SpecialEditor({
     >
       {error && <p className="vz-field__error" role="alert" style={{ marginBottom: 12 }}>{error}</p>}
 
+      {form.productId && (
+        <Card pad flat style={{ marginBottom: 12 }}>
+          <div className="vz-row" style={{ gap: 8 }}>
+            <Utensils size={15} color="var(--muted)" />
+            <span className="vz-muted" style={{ fontSize: '0.85rem' }}>
+              Linked to an existing menu product — the special references it; no duplicate product is created.
+            </span>
+          </div>
+        </Card>
+      )}
+
+      <Field label="Special type" htmlFor="sp-type">
+        <Select id="sp-type" value={SPECIAL_TYPES.some((t) => t.value === form.badge) ? form.badge : 'Special'} onChange={(e) => set('badge', e.target.value)}>
+          {SPECIAL_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+        </Select>
+      </Field>
+
       <Field label="Title" htmlFor="sp-title">
         <Input id="sp-title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Chicken Alfredo Special" />
       </Field>
@@ -138,15 +170,12 @@ function SpecialEditor({
         <Textarea id="sp-desc" value={form.description} onChange={(e) => set('description', e.target.value)} />
       </Field>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Price (AUD)" htmlFor="sp-price">
           <Input id="sp-price" type="number" min={0} step="0.10" value={form.price} onChange={(e) => set('price', Number(e.target.value))} />
         </Field>
         <Field label="Original price" hint="For the strike-through" htmlFor="sp-was">
           <Input id="sp-was" type="number" min={0} step="0.10" value={form.originalPrice ?? ''} onChange={(e) => set('originalPrice', e.target.value === '' ? null : Number(e.target.value))} />
-        </Field>
-        <Field label="Badge" htmlFor="sp-badge">
-          <Input id="sp-badge" value={form.badge} onChange={(e) => set('badge', e.target.value)} placeholder="Special" />
         </Field>
       </div>
 
@@ -228,11 +257,115 @@ function SpecialEditor({
   );
 }
 
+/** Homepage banner (legacy homepage_content promo) — the website's fallback. */
+function HomepagePromoCard({ onChange }: { onChange: () => void }) {
+  const [promo, setPromo] = useState<HomepageContent | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  useEffect(() => {
+    void getHomepageContent().then(setPromo).catch(() => setPromo(null));
+  }, []);
+
+  if (promo === null) return <Skeleton height={120} />;
+
+  const set = <K extends keyof HomepageContent>(key: K, value: HomepageContent[K]) =>
+    setPromo((current) => (current ? { ...current, [key]: value } : current));
+
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await saveHomepageContent(promo);
+      toast.show(promo.enabled ? 'Homepage banner saved — live on the website' : 'Homepage banner disabled');
+      onChange();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save the banner.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card pad flat>
+      <div className="vz-row vz-row--between" style={{ marginBottom: 6 }}>
+        <strong style={{ fontSize: '0.95rem' }}>Homepage banner</strong>
+        <Toggle checked={promo.enabled} onChange={(v) => set('enabled', v)} label="Enabled" />
+      </div>
+      <p className="vz-muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
+        Shown on the website whenever no scheduled special above is live. This is the banner the site
+        has been displaying (e.g. the Cacio e Pepe promo).
+      </p>
+      {error && <p className="vz-field__error" role="alert">{error}</p>}
+      <Field label="Banner type" htmlFor="promo-type">
+        <Select id="promo-type" value={promo.promoType} onChange={(e) => set('promoType', e.target.value as HomepageContent['promoType'])}>
+          <option value="daily">Special of the Day</option>
+          <option value="weekly">Special of the Week</option>
+        </Select>
+      </Field>
+      <Field label="Title" htmlFor="promo-title">
+        <Input id="promo-title" value={promo.title} onChange={(e) => set('title', e.target.value)} />
+      </Field>
+      <Field label="Description" htmlFor="promo-desc">
+        <Textarea id="promo-desc" rows={2} value={promo.description} onChange={(e) => set('description', e.target.value)} />
+      </Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <Field label="Price" htmlFor="promo-price">
+          <Input id="promo-price" type="number" min={0} step="0.10" value={promo.price ?? ''} onChange={(e) => set('price', e.target.value === '' ? null : Number(e.target.value))} />
+        </Field>
+        <Field label="Start date" htmlFor="promo-start">
+          <Input id="promo-start" type="date" value={promo.startDate ?? ''} onChange={(e) => set('startDate', e.target.value || null)} />
+        </Field>
+        <Field label="End date" htmlFor="promo-end">
+          <Input id="promo-end" type="date" value={promo.endDate ?? ''} onChange={(e) => set('endDate', e.target.value || null)} />
+        </Field>
+      </div>
+      <Field label="Image URL" htmlFor="promo-image" hint="Upload via Products or Branding, then paste the URL">
+        <Input id="promo-image" value={promo.imageUrl ?? ''} onChange={(e) => set('imageUrl', e.target.value || null)} placeholder="https://…" />
+      </Field>
+      <div className="vz-row" style={{ marginTop: 10 }}>
+        <Button size="sm" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save banner'}</Button>
+      </div>
+    </Card>
+  );
+}
+
+/** Add-from-menu picker — browse by category, pick ONE existing product. */
+function AddFromMenuModal({ onClose, onPicked }: { onClose: () => void; onPicked: (product: Product) => void }) {
+  const products = useResource(getProducts);
+  return (
+    <Modal open wide onClose={onClose} title="Add special from menu"
+      footer={<Button variant="ghost" onClick={onClose}>Cancel</Button>}>
+      <p className="vz-muted" style={{ fontSize: '0.85rem' }}>
+        Pick an existing menu product — the special will reference it (no duplicate product is created).
+      </p>
+      {products.loading ? (
+        <Skeleton height={160} />
+      ) : products.error ? (
+        <p className="vz-field__error">Products could not be loaded.</p>
+      ) : (
+        <CategoryProductPicker
+          products={(products.data ?? []).filter((product) => product.active && !product.archived)}
+          selectedIds={[]}
+          singleSelect
+          onToggle={(picked) => {
+            const product = (products.data ?? []).find((candidate) => candidate.id === picked.id);
+            if (product) onPicked(product);
+          }}
+        />
+      )}
+    </Modal>
+  );
+}
+
 export default function SpecialsPage() {
   const [specials, setSpecials] = useState<Special[] | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<{ id: string | null; draft: SpecialDraft } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const featured = useResource(getProducts);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -256,6 +389,18 @@ export default function SpecialsPage() {
     () => (specials ?? []).filter((s) => isSpecialLive(s)).length,
     [specials],
   );
+  const featuredCount = (featured.data ?? []).filter((product) => product.featured && product.active && !product.archived).length;
+
+  /** Add-from-menu: prefill a special draft from an existing product (reference, not duplicate). */
+  const specialFromProduct = (product: Product): SpecialDraft => ({
+    ...emptyDraft(),
+    title: product.name,
+    description: product.description,
+    price: product.price,
+    imageUrl: product.imageUrl,
+    category: product.category,
+    productId: product.id,
+  });
 
   return (
     <>
@@ -263,16 +408,42 @@ export default function SpecialsPage() {
         <div>
           <h1>Specials</h1>
           <p className="admin-head__sub">
-            Dedicated Special of the Day — scheduled by date, time and day of week.
+            Everything the website can show as a special: scheduled specials (standalone or linked to
+            menu products), the homepage banner, and featured dishes.
             {specials && ` ${liveNow} live right now.`}
           </p>
         </div>
-        <Button onClick={() => setEditing({ id: null, draft: emptyDraft() })}>
-          <Plus size={16} /> New special
-        </Button>
+        <div className="vz-row">
+          <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+            <Utensils size={16} /> Add from menu
+          </Button>
+          <Button onClick={() => setEditing({ id: null, draft: emptyDraft() })}>
+            <Plus size={16} /> New special
+          </Button>
+        </div>
       </div>
 
       {error && <p className="vz-error-box" style={{ marginBottom: 14 }}>{error}</p>}
+
+      <div className="vz-stack" style={{ marginBottom: 22 }}>
+        <HomepagePromoCard onChange={() => void load()} />
+        <Card pad flat>
+          <div className="vz-row vz-row--between">
+            <div className="vz-row" style={{ gap: 8 }}>
+              <Sparkles size={16} color="var(--muted)" />
+              <span style={{ fontSize: '0.9rem' }}>
+                <strong>Featured dishes</strong> — the homepage grid
+              </span>
+            </div>
+            <div className="vz-row" style={{ gap: 10 }}>
+              <Badge tone="info">{featuredCount} featured</Badge>
+              <a className="vz-btn vz-btn--secondary vz-btn--sm" href="/admin/featured">Manage featured dishes</a>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <h2 style={{ fontSize: '1.05rem', marginBottom: 10 }}>Scheduled specials</h2>
 
       <div className="vz-row" style={{ marginBottom: 14 }}>
         <Toggle checked={showArchived} onChange={setShowArchived} label="Show archived" />
@@ -368,6 +539,16 @@ export default function SpecialsPage() {
           editingId={editing.id}
           onClose={() => setEditing(null)}
           onSaved={() => void load()}
+        />
+      )}
+
+      {pickerOpen && (
+        <AddFromMenuModal
+          onClose={() => setPickerOpen(false)}
+          onPicked={(product) => {
+            setPickerOpen(false);
+            setEditing({ id: null, draft: specialFromProduct(product) });
+          }}
         />
       )}
 

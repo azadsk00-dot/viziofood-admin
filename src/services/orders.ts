@@ -9,6 +9,7 @@
  */
 
 import { supabase, supabaseConfigurationError } from '../lib/supabase';
+import { nameLookupFromRows, normaliseDisplayText, normaliseModifierLines, type NameLookup } from './orderDisplay';
 import type { Order, OrderItem, OrderStatus } from '../types';
 
 type Row = Record<string, unknown>;
@@ -55,12 +56,12 @@ const modifiers = (value: unknown): string[] =>
         .filter(Boolean)
     : [];
 
-const orderItem = (row: Row): OrderItem => ({
+const orderItem = (row: Row, names: NameLookup): OrderItem => ({
   id: text(row.id),
-  name: text(row.product_name),
+  name: normaliseDisplayText(text(row.product_name), names),
   quantity: num(row.quantity),
   unitPrice: num(row.unit_price),
-  modifiers: modifiers(row.modifiers),
+  modifiers: normaliseModifierLines(modifiers(row.modifiers), names),
   notes: text(row.special_instructions),
 });
 
@@ -144,10 +145,16 @@ export async function getOrders(limit?: number): Promise<Order[]> {
     .order('created_at');
   if (itemError) throw itemError;
 
+  // Current product names — repairs any legacy row whose display strings still
+  // hold bare UUIDs instead of names (kitchen staff never see raw IDs).
+  const { data: nameRows, error: nameError } = await client().from('products').select('id,name');
+  if (nameError) throw nameError;
+  const names = nameLookupFromRows((nameRows ?? []) as unknown as Array<{ id: unknown; name: unknown }>);
+
   const itemsByOrder = new Map<string, OrderItem[]>();
   for (const row of (itemRows ?? []) as unknown as Row[]) {
     const orderId = text(row.order_id);
-    itemsByOrder.set(orderId, [...(itemsByOrder.get(orderId) ?? []), orderItem(row)]);
+    itemsByOrder.set(orderId, [...(itemsByOrder.get(orderId) ?? []), orderItem(row, names)]);
   }
   return rows.map((row) => ({ ...mapOrder(row, extended), items: itemsByOrder.get(text(row.id)) ?? [] }));
 }

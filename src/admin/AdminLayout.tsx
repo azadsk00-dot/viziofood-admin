@@ -13,6 +13,7 @@ import {
   Image,
   LayoutDashboard,
   Menu,
+  PartyPopper,
   Printer,
   Settings,
   Shapes,
@@ -47,6 +48,7 @@ const groups = [
     items: [
       ['/admin/specials', 'Specials', Sparkles],
       ['/admin/coupons', 'Coupons', Tag],
+      ['/admin/catering', 'Catering & Bulk Buy', PartyPopper],
       ['/admin/featured', 'Featured', Star],
       ['/admin/branding', 'Branding', Image],
       ['/admin/customers', 'Customers', Users],

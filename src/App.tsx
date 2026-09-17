@@ -27,6 +27,7 @@ const SpecialsPage = lazy(() => import('./admin/SpecialsPage'));
 const CouponsPage = lazy(() => import('./admin/CouponsPage'));
 const PrintersPage = lazy(() => import('./admin/PrintersPage'));
 const AuditPage = lazy(() => import('./admin/AuditPage'));
+const CateringAdminPage = lazy(() => import('./admin/CateringPage'));
 
 function Public() {
   return (
@@ -86,6 +87,7 @@ export default function App() {
             <Route path="modifiers" element={<ModifiersPage />} />
             <Route path="specials" element={<SpecialsPage />} />
             <Route path="coupons" element={<CouponsPage />} />
+            <Route path="catering" element={<CateringAdminPage />} />
             <Route path="featured" element={<FeaturedDishesPage />} />
             <Route path="branding" element={<BrandingPage />} />
             <Route path="printers" element={<PrintersPage />} />

@@ -7,6 +7,7 @@ import './styles/components.css';
 import './styles/site.css';
 import './styles/admin.css';
 import './styles/kitchen.css';
+import './styles/catering-admin.css';
 import { ToastProvider } from './components/Toast';
 import { AuthProvider } from './context/AuthProvider';
 import { CartProvider } from './context/CartProvider';

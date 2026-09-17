@@ -1,0 +1,77 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Catering & Bulk Buy admin — scoped styles for Admin → Catering.
+   Ported from the public-site repository so the Catering admin looks and
+   behaves identically on admin.viziofood.com. Everything is namespaced under
+   .catering-admin (the wrapper rendered by CateringPage) so none of these
+   rules can affect the legacy admin pages that share this stylesheet bundle.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.catering-admin {
+  /* Token values from the public-site design (scoped, not global). */
+  --brand-blue: #70a4d2;
+  --brand-blue-deep: #3b6fa3;
+  --brand-blue-ink: #2c5e93;
+  --brand-blue-soft: #eaf3fb;
+  --line-c: #e5eaf1;
+  --line: #dce4ee;
+  --ink: #1f2937;
+}
+
+/* Page header */
+.catering-admin .admin-title { display: flex; justify-content: space-between; align-items: end; gap: 1rem; margin-bottom: 2rem; }
+.catering-admin .admin-title h1 { font-size: clamp(1.8rem, 3.4vw, 2.8rem); }
+.catering-admin .admin-title .eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: .7rem; font-weight: 700; color: var(--brand-blue-ink); margin: 0 0 .5rem; }
+
+/* Buttons */
+.catering-admin .button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; background: linear-gradient(160deg, #4e8cc0, var(--brand-blue-deep)); color: #fff; border: 0; border-radius: 999px; padding: .9rem 1.6rem; font-weight: 700; letter-spacing: .01em; cursor: pointer; transition: transform .25s, box-shadow .25s, filter .25s; box-shadow: 0 12px 28px -12px rgba(43, 94, 147, .55); }
+.catering-admin .button:disabled { opacity: .6; cursor: default; }
+.catering-admin .button.small { padding: .68rem 1.15rem; font-size: .87rem; }
+.catering-admin .button.light { background: #fff; color: var(--brand-blue-ink); box-shadow: 0 12px 28px -16px rgba(23, 42, 64, .4); }
+.catering-admin .textlink { font-weight: 700; display: inline-flex; align-items: center; gap: .4rem; color: var(--brand-blue-ink); border-bottom: 1.5px solid currentColor; padding-bottom: 2px; transition: opacity .2s; background: transparent; border-top: 0; border-left: 0; border-right: 0; cursor: pointer; }
+.catering-admin .textlink:hover { opacity: .7; }
+.catering-admin .textlink:disabled { opacity: .35; cursor: default; }
+
+/* Tabs */
+.catering-admin .admin-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+.catering-admin .admin-tabs button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: .5rem 1rem; font-weight: 700; font-size: .83rem; cursor: pointer; color: #57647a; }
+.catering-admin .admin-tabs button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* Overview glance cards */
+.catering-admin .admin-glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: .9rem; }
+.catering-admin .admin-glance-card { background: #fbfcfe; border: 1px solid var(--line-c); border-radius: 12px; padding: .95rem; }
+.catering-admin .admin-glance-card strong { font-size: .9rem; }
+.catering-admin .admin-glance-card small { display: block; color: #7d8a99; margin-top: .35rem; font-size: .76rem; line-height: 1.45; }
+
+/* Forms */
+.catering-admin .admin-field { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; font-weight: 700; }
+.catering-admin .admin-field input, .catering-admin .admin-field select, .catering-admin .admin-field textarea { border: 1px solid var(--line); border-radius: .5rem; padding: .62rem; background: #fff; font: inherit; font-weight: 500; width: 100%; }
+.catering-admin .admin-field small { font-weight: 500; color: #7d8a99; }
+.catering-admin .admin-toggle { display: inline-flex; align-items: center; gap: .5rem; font-size: .85rem; font-weight: 600; cursor: pointer; }
+
+/* Product/FAQ/enquiry rows */
+.catering-admin .admin-product-list { display: grid; gap: .9rem; margin-top: 1rem; }
+.catering-admin .admin-product-row { background: #fbfcfe; border: 1px solid var(--line-c); border-radius: 12px; padding: 1rem; }
+.catering-admin .admin-product-head { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+.catering-admin .admin-product-head small { color: #7d8a99; }
+.catering-admin .admin-product-toggles { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; }
+.catering-admin .admin-product-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .9rem; margin: 1rem 0; }
+.catering-admin .admin-product-row select { border: 1px solid var(--line); border-radius: .5rem; padding: .5rem; background: #fff; }
+
+/* Search */
+.catering-admin .admin-search { display: flex; align-items: center; gap: .5rem; border: 1px solid var(--line); border-radius: .6rem; padding: .6rem .7rem; max-width: 340px; }
+
+/* Notices, chips, muted text */
+.catering-admin .admin-message { background: var(--brand-blue-soft); border: 1px solid #d4e5f4; color: #3c5f80; padding: .8rem 1rem; border-radius: .6rem; }
+.catering-admin .status { display: inline-block; padding: .22rem .5rem; border-radius: 50px; background: #eaf1fa; color: #42688f; font-size: .7rem; font-weight: 700; }
+.catering-admin .status.new { background: #fdf2cf; color: #875f00; }
+.catering-admin .status.preparing { background: #e9edff; color: #4353a1; }
+.catering-admin .status.active { background: #dbf3e7; color: #167347; }
+.catering-admin .status.cancelled { background: #fde5e5; color: #a43737; }
+.catering-admin .status.completed { background: #edf1f5; color: #576474; }
+.catering-admin .muted { font-size: .85rem; color: #7d8a99; }
+.catering-admin h3 { font-size: 1.05rem; }
+
+/* Responsive tweak mirroring the public-site admin */
+@media (max-width: 720px) {
+  .catering-admin .admin-title { flex-direction: column; align-items: flex-start; }
+}

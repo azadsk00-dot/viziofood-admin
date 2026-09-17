@@ -253,17 +253,27 @@ export interface AdminCateringEnquiry {
   id: string; name: string; phone: string; email: string; eventDate: string | null; guests: number | null;
   estimatedOrderSize: string; preferredFulfilment: 'Pickup' | 'Delivery' | 'Unsure'; deliveryAddress: string;
   dietaryNotes: string; message: string; status: CateringEnquiryStatus; adminNotes: string; createdAt: string;
+  /** Internal notification email outcome (null = columns not in the database yet). */
+  notificationSent: boolean | null; notificationError: string | null;
 }
 
 export type { CateringEnquiryStatus };
 
 const ENQUIRY_STATUSES: CateringEnquiryStatus[] = ['New', 'Contacted', 'Quoted', 'Confirmed', 'Completed', 'Cancelled'];
 
+const ENQUIRY_SELECT = 'id,name,phone,email,event_date,guests,estimated_order_size,preferred_fulfilment,delivery_address,dietary_notes,message,status,admin_notes,created_at,notification_sent,notification_error';
+const ENQUIRY_SELECT_LEGACY = 'id,name,phone,email,event_date,guests,estimated_order_size,preferred_fulfilment,delivery_address,dietary_notes,message,status,admin_notes,created_at';
+
 export const getCateringEnquiries = async (): Promise<AdminCateringEnquiry[]> => {
-  const { data, error } = await client()
-    .from('catering_enquiries')
-    .select('id,name,phone,email,event_date,guests,estimated_order_size,preferred_fulfilment,delivery_address,dietary_notes,message,status,admin_notes,created_at')
-    .order('created_at', { ascending: false }).limit(200);
+  const run = (columns: string) =>
+    client().from('catering_enquiries').select(columns).order('created_at', { ascending: false }).limit(200);
+  let query = await run(ENQUIRY_SELECT);
+  // 42703/PGRST204 = the notification columns are not in the database yet
+  // (pre-20260917160000) — read without them; null means "outcome unknown".
+  if (query.error && (query.error.code === '42703' || query.error.code === 'PGRST204')) {
+    query = await run(ENQUIRY_SELECT_LEGACY) as typeof query;
+  }
+  const { data, error } = query;
   if (error) {
     if (error.code === '42P01' || error.code === '42703' || error.code === 'PGRST204' || error.code === 'PGRST205') return [];
     fail(error);
@@ -280,6 +290,8 @@ export const getCateringEnquiries = async (): Promise<AdminCateringEnquiry[]> =>
       deliveryAddress: String(row.delivery_address ?? ''), dietaryNotes: String(row.dietary_notes ?? ''),
       message: String(row.message ?? ''), status: ENQUIRY_STATUSES.includes(status) ? status : 'New',
       adminNotes: String(row.admin_notes ?? ''), createdAt: String(row.created_at ?? ''),
+      notificationSent: row.notification_sent === undefined ? null : row.notification_sent === true,
+      notificationError: typeof row.notification_error === 'string' && row.notification_error ? row.notification_error : null,
     };
   });
 };

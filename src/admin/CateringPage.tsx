@@ -271,6 +271,9 @@ function EnquiriesTab() {
           <div className="admin-product-head">
             <div>
               <strong>{enquiry.name}</strong> <span className={`status ${enquiry.status.toLowerCase()}`}>{enquiry.status}</span>
+              {enquiry.notificationSent === true && <span className="status active">Email sent</span>}
+              {enquiry.notificationSent !== true && enquiry.notificationError && <span className="status cancelled" title={enquiry.notificationError}>Email failed</span>}
+              {enquiry.notificationSent === false && !enquiry.notificationError && <span className="status completed">Email not sent</span>}
               <div>
                 <small>
                   <a href={`tel:${enquiry.phone}`}>{enquiry.phone}</a> · <a href={`mailto:${enquiry.email}`}>{enquiry.email}</a>
